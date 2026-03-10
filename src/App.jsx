@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 
 const TIER_COLORS = {
   "1+":"#FF6B35","1-":"#FF8C5A","2++":"#FFB347","2+":"#FFC87A",
@@ -10,32 +10,32 @@ const TIER_BOOM = {
 const TIERS = ["1+","1-","2++","2+","2","2-","3+","3"];
 const ADMIN_CREDENTIALS = [
   {username:"admin",password:"pickleboom@2026",label:"Administrator"},
-  {username:"huypham",password:"captain@2026",label:"Huy Phạm (C)"},
+  {username:"huypham",password:"captain@2026",label:"Huy Phạm "},
 ];
 
 const INIT = {
   male:[
-    {id:1,name:"Huy Phạm (C)",tier:"1+",boom:2.8,isC:true},
-    {id:2,name:"A Hòa (C)",tier:"1+",boom:2.8,isC:true},
-    {id:3,name:"Phong (C)",tier:"1+",boom:2.8,isC:true},
-    {id:4,name:"Tân Liver (C)",tier:"1-",boom:2.75,isC:true},
-    {id:5,name:"Vũ Luân (C)",tier:"1-",boom:2.75,isC:true},
+    {id:1,name:"Huy Phạm ",tier:"1+",boom:2.83,remark:"Á quân pvna 5.2 Quảng Ngãi 8/3"},
+    {id:2,name:"A Hòa ",tier:"1+",boom:2.83,remark:"+0.03 Á Quân WeekBoom1 21/01"},
+    {id:3,name:"Phong ",tier:"1+",boom:2.85,remark:"+0.05 Vô địch WeekBoom2 31/01"},
+    {id:4,name:"Tân Liver ",tier:"1-",boom:2.8,remark:"+0.05 Vô địch WeekBoom1 21/01"},
+    {id:5,name:"Vũ Luân ",tier:"1-",boom:2.75},
     {id:6,name:"Viết Tân",tier:"1-",boom:2.75},
-    {id:7,name:"Quảng Chế",tier:"2++",boom:2.7},
-    {id:8,name:"Hiểu Trần",tier:"2++",boom:2.7},
+    {id:7,name:"Quảng Chế",tier:"2++",boom:2.73,remark:"Á Quân pvna fpt 8/3"},
+    {id:8,name:"Hiếu Trần",tier:"2++",boom:2.7},
     {id:9,name:"Quí Nguyễn",tier:"2++",boom:2.7},
-    {id:10,name:"Ha Hoang",tier:"2+",boom:2.65},
+    {id:10,name:"Ha Hoang",tier:"2++",boom:2.7},
     {id:11,name:"Tiến Nguyễn",tier:"2+",boom:2.65},
     {id:12,name:"Dương Mỹ",tier:"2+",boom:2.65},
     {id:13,name:"A Dũng Newlife",tier:"2+",boom:2.65},
     {id:14,name:"Nghĩa",tier:"2+",boom:2.65},
-    {id:15,name:"Minh Trần",tier:"2+",boom:2.65},
+    {id:15,name:"Minh Trần",tier:"2+",boom:2.68,remark:"+0.03 Á Quân WeekBoom2 31/01"},
     {id:16,name:"Tan Thuan",tier:"2+",boom:2.65},
-    {id:17,name:"Hùng Cần",tier:"2+",boom:2.65},
+    {id:17,name:"Hùng Cận",tier:"2+",boom:2.65},
     {id:18,name:"Rin",tier:"2+",boom:2.65},
-    {id:19,name:"Bin Bin",tier:"2+",boom:2.65},
-    {id:20,name:"Tư Khoa",tier:"2-",boom:2.6},
-    {id:21,name:"Tuấn Nguyễn",tier:"2-",boom:2.6},
+    {id:19,name:"Bin BIn",tier:"2+",boom:2.65},
+    {id:20,name:"Tư Khoa",tier:"2-",boom:2.63,remark:"+0.03 Á Quân WeekBoom2 31/01"},
+    {id:21,name:"Tuấn Nguyên",tier:"2-",boom:2.6},
     {id:22,name:"An gs",tier:"2-",boom:2.6},
     {id:23,name:"Đình Chung",tier:"2-",boom:2.6},
     {id:24,name:"Mạnh Hoàng",tier:"2-",boom:2.6},
@@ -44,28 +44,31 @@ const INIT = {
     {id:27,name:"Luân Ng",tier:"3+",boom:2.55},
     {id:28,name:"Huy PHan",tier:"3+",boom:2.55},
     {id:29,name:"A Toàn",tier:"3+",boom:2.55},
-    {id:30,name:"Trần Anh Đức",tier:"3+",boom:2.55},
-    {id:31,name:"Nhan Tâm",tier:"3+",boom:2.55},
+    {id:30,name:"Trần Anh Đức",tier:"3+",boom:2.58,remark:"+0.03 Vô địch giải nội bộ ngành du lịch 15/01"},
+    {id:31,name:"Nhan Tam",tier:"3+",boom:2.55},
     {id:32,name:"Phúc",tier:"3",boom:2.5},
-    {id:33,name:"Vinh",tier:"3",boom:2.5},
-    {id:34,name:"Xương",tier:"3",boom:2.5},
+    {id:33,name:"Vĩnh",tier:"3",boom:2.5},
+    {id:34,name:"Xưng",tier:"3",boom:2.5},
     {id:35,name:"WIN",tier:"3",boom:2.5},
     {id:36,name:"Huy Oto",tier:"3",boom:2.5},
     {id:37,name:"Tứ Linh",tier:"3",boom:2.5},
     {id:38,name:"Hùng AAC",tier:"3",boom:2.5},
     {id:39,name:"Linh Huỳnh",tier:"3",boom:2.5},
     {id:40,name:"Trương Hùng",tier:"3",boom:2.5},
+    {id:41,name:"Tuấn Mai",tier:"3",boom:2.745,remark:"Tham gia mini game 21/01 . Snapshot 15/01"},
+    {id:42,name:"Thanh Tuấn",tier:"3",boom:2.6,remark:"Mini game 21/01 . Snapshot 18/01 tickvang"},
+    {id:43,name:"Duy Anh",tier:"3",boom:2.95},
   ],
   female:[
     {id:101,name:"Như Hiếu",tier:"1+",boom:2.15},
-    {id:102,name:"Giao",tier:"1+",boom:2.15},
+    {id:102,name:"Giao",tier:"1+",boom:2.19,remark:"+0.04 Vô địch WeekBoom2 31/01"},
     {id:103,name:"Hiếu tay trái",tier:"1+",boom:2.15},
     {id:104,name:"Phương Thảo",tier:"1+",boom:2.15},
     {id:105,name:"Nga",tier:"1+",boom:2.15},
     {id:106,name:"Linh Thái",tier:"1+",boom:2.15},
     {id:107,name:"Dương",tier:"2",boom:2.1},
     {id:108,name:"Diệu",tier:"2",boom:2.1},
-    {id:109,name:"Phương Cici",tier:"2",boom:2.1},
+    {id:109,name:"Phương Cici",tier:"2",boom:2.14,remark:"+0.04 Vô địch WeekBoom1 21/01"},
     {id:110,name:"Hải",tier:"2",boom:2.1},
     {id:111,name:"Hằng",tier:"2",boom:2.1},
     {id:112,name:"Mai",tier:"2",boom:2.1},
@@ -79,12 +82,13 @@ const INIT = {
     {id:120,name:"Ái",tier:"2-",boom:2.05},
     {id:121,name:"Thu Hà",tier:"2-",boom:2.05},
     {id:122,name:"Nguyên",tier:"2-",boom:2.05},
-    {id:123,name:"C Bí",tier:"2-",boom:2.05},
-    {id:124,name:"Thảo nhỏ",tier:"2-",boom:2.05},
+    {id:123,name:"C Bi",tier:"2-",boom:2.05},
+    {id:124,name:"Thảo nhỏ",tier:"2-",boom:2.07,remark:"+0.02 Á Quân WeekBoom1 21/01"},
     {id:125,name:"Lam Bình",tier:"2-",boom:2.05},
     {id:126,name:"Anber",tier:"2-",boom:2.05},
     {id:127,name:"Trang Đỗ",tier:"2-",boom:2.05},
     {id:128,name:"Quỳnh Anh",tier:"2-",boom:2.05},
+    {id:129,name:"Thùy Huỳnh",tier:"2",boom:2.1,remark:"Mini game 21/01 . Snapshot 18/01 tickvang"},
   ],
 };
 
@@ -107,6 +111,52 @@ function SectionTitle({children}){
   return <div style={{fontSize:13,fontWeight:700,color:C.orange,marginBottom:12,letterSpacing:0.5,textTransform:"uppercase"}}>{children}</div>;
 }
 
+// Modal input shared style
+const MS = {
+  width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,107,53,0.25)",
+  borderRadius:10,padding:"11px 14px",color:"#E5E7EB",fontSize:15,outline:"none",boxSizing:"border-box",
+};
+
+// ─── Supabase config ───────────────────────────────────────────────────────
+const SB_URL = "https://oevgauxkildxdrqnphnw.supabase.co";
+const SB_KEY = "sb_publishable_rG83Er1StQyQr3bk3eX6jQ_vVcSUs3f";
+
+const sbFetch = async (path, options={}) => {
+  const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    headers: {
+      "apikey": SB_KEY,
+      "Authorization": `Bearer ${SB_KEY}`,
+      "Content-Type": "application/json",
+      "Prefer": "return=minimal",
+      ...options.headers,
+    },
+    ...options,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(err);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+};
+
+// Convert flat DB row → app player object
+const rowToPlayer = (r) => ({
+  id: r.id,
+  name: r.name,
+  tier: r.tier,
+  boom: r.boom,
+  gender: r.gender,
+  remark: r.remark || "",
+});
+
+// Convert flat DB rows → {male:[...], female:[...]}
+const rowsToPlayers = (rows) => {
+  const male = rows.filter(r=>r.gender==="male").map(rowToPlayer);
+  const female = rows.filter(r=>r.gender==="female").map(rowToPlayer);
+  return { male, female };
+};
+
 export default function App(){
   const [tab,setTab]=useState("dashboard");
   const [players,setPlayers]=useState(INIT);
@@ -115,8 +165,11 @@ export default function App(){
   const [filterGender,setFilterGender]=useState("all");
   const [showAddModal,setShowAddModal]=useState(false);
   const [adjModal,setAdjModal]=useState(null);
-  const [newPlayer,setNewPlayer]=useState({name:"",tier:"3",gender:"male"});
+  const [newPlayer,setNewPlayer]=useState({name:"",tier:"3",gender:"male",remark:""});
   const [adjForm,setAdjForm]=useState({type:"",value:0,note:""});
+  const [editModal,setEditModal]=useState(null);
+  const [editForm,setEditForm]=useState({name:"",tier:"3",gender:"male",remark:""});
+  const [deleteConfirm,setDeleteConfirm]=useState(null);
   const [history,setHistory]=useState([]);
   const [notif,setNotif]=useState(null);
   const [auth,setAuth]=useState({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});
@@ -125,6 +178,54 @@ export default function App(){
   const [mmGender,setMmGender]=useState("all");
   const [mmSel,setMmSel]=useState([]);
   const [mmResult,setMmResult]=useState(null);
+  const [dbReady,setDbReady]=useState(false);
+  const [syncing,setSyncing]=useState(false);
+  const [regForm,setRegForm]=useState({name:"",email:"",pvna:"",gender:"male",note:""});
+  const [regList,setRegList]=useState([]);
+  const [regSubmitted,setRegSubmitted]=useState(false);
+  const [regLoading,setRegLoading]=useState(false);
+
+  // ── Load data from Supabase on mount ──
+  useEffect(()=>{
+    const load = async () => {
+      setSyncing(true);
+      try {
+        const [pRows, hRows, rRows] = await Promise.all([
+          sbFetch("players?select=*&order=id.asc"),
+          sbFetch("history?select=*&order=created_at.desc&limit=100"),
+          sbFetch("registrations?select=*&order=id.desc&limit=200"),
+        ]);
+        if (pRows && pRows.length > 0) {
+          setPlayers(rowsToPlayers(pRows));
+        } else {
+          // First time: seed database with INIT data
+          await seedDatabase();
+        }
+        if (hRows) {
+          setHistory(hRows.map(r=>({id:r.id,action:r.action,player:r.player,detail:r.detail||"",time:r.time||""})));
+        }
+        if (rRows) setRegList(rRows);
+        setDbReady(true);
+      } catch(e) {
+        console.error("Supabase load error:", e);
+        setDbReady(true); // fall through to local state
+      }
+      setSyncing(false);
+    };
+    load();
+  }, []);
+
+  const seedDatabase = async () => {
+    const allInit = [
+      ...INIT.male.map(p=>({id:p.id,name:p.name,tier:p.tier,boom:p.boom,gender:"male",remark:p.remark||""})),
+      ...INIT.female.map(p=>({id:p.id,name:p.name,tier:p.tier,boom:p.boom,gender:"female",remark:p.remark||""})),
+    ];
+    await sbFetch("players", {
+      method:"POST",
+      headers:{"Prefer":"return=minimal"},
+      body: JSON.stringify(allInit),
+    });
+  };
 
   const allPlayers=useMemo(()=>[
     ...players.male.map(p=>({...p,gender:"male"})),
@@ -160,6 +261,18 @@ export default function App(){
     setTimeout(()=>setNotif(null),3000);
   };
 
+  // ── Supabase write helper ──
+  const addHistory = async (action, player, detail) => {
+    const entry = {id:Date.now(),action,player,detail,time:new Date().toLocaleString("vi-VN")};
+    setHistory(h=>[entry,...h]);
+    try {
+      await sbFetch("history", {
+        method:"POST",
+        body: JSON.stringify({id:entry.id,action,player,detail,time:entry.time}),
+      });
+    } catch(e){ console.error("history write:", e); }
+  };
+
   const handleLogin=()=>{
     const found=ADMIN_CREDENTIALS.find(c=>c.username===auth.u&&c.password===auth.p);
     if(found){setAuth(a=>({...a,loggedIn:true,user:found,showLogin:false,err:"",u:"",p:""}));showNotif("Đăng nhập thành công");}
@@ -167,30 +280,113 @@ export default function App(){
   };
   const handleLogout=()=>{setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});showNotif("Đã đăng xuất");};
 
-  const handleAddPlayer=()=>{
-    if(!newPlayer.name.trim())return;
-    const boom=TIER_BOOM[newPlayer.tier]||2.5;
-    setPlayers(prev=>({...prev,[newPlayer.gender]:[...prev[newPlayer.gender],{id:Date.now(),name:newPlayer.name,tier:newPlayer.tier,boom}]}));
-    setHistory(h=>[{id:Date.now(),action:"Thêm VĐV",player:newPlayer.name,detail:`Tier ${newPlayer.tier}`,time:new Date().toLocaleString("vi-VN")},...h]);
-    setNewPlayer({name:"",tier:"3",gender:"male"});
-    setShowAddModal(false);
-    showNotif("Đã thêm VĐV "+newPlayer.name);
+  const handleRegister=async()=>{
+    if(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())return;
+    setRegLoading(true);
+    const entry={id:Date.now(),name:regForm.name.trim(),email:regForm.email.trim(),pvna:regForm.pvna.trim(),gender:regForm.gender,note:regForm.note.trim(),time:new Date().toLocaleString("vi-VN"),status:"pending"};
+    setRegList(prev=>[entry,...prev]);
+    try{await sbFetch("registrations",{method:"POST",body:JSON.stringify(entry)});}catch(e){console.error("reg:",e);}
+    setRegSubmitted(true);
+    setRegLoading(false);
+    setRegForm({name:"",email:"",pvna:"",gender:"male",note:""});
   };
 
-  const handleAdjust=()=>{
+  const handleApproveReg=async(reg)=>{
+    setRegList(prev=>prev.map(r=>r.id===reg.id?{...r,status:"approved"}:r));
+    try{await sbFetch(`registrations?id=eq.${reg.id}`,{method:"PATCH",body:JSON.stringify({status:"approved"})});}catch(e){console.error(e);}
+    showNotif(`Đã duyệt: ${reg.name}`);
+  };
+
+  const handleRejectReg=async(reg)=>{
+    setRegList(prev=>prev.map(r=>r.id===reg.id?{...r,status:"rejected"}:r));
+    try{await sbFetch(`registrations?id=eq.${reg.id}`,{method:"PATCH",body:JSON.stringify({status:"rejected"})});}catch(e){console.error(e);}
+    showNotif(`Đã từ chối: ${reg.name}`,"err");
+  };
+
+  const handleAddPlayer=async()=>{
+    if(!newPlayer.name.trim())return;
+    const boom=TIER_BOOM[newPlayer.tier]||2.5;
+    const id=Date.now();
+    const p={id,name:newPlayer.name,tier:newPlayer.tier,boom,gender:newPlayer.gender,remark:newPlayer.remark||""};
+    setPlayers(prev=>({...prev,[newPlayer.gender]:[...prev[newPlayer.gender],p]}));
+    setNewPlayer({name:"",tier:"3",gender:"male",remark:""});
+    setShowAddModal(false);
+    showNotif("Đã thêm VĐV "+newPlayer.name);
+    try {
+      await sbFetch("players",{method:"POST",body:JSON.stringify({id,name:p.name,tier:p.tier,boom:p.boom,gender:p.gender,remark:p.remark||""})});
+    } catch(e){ console.error("add player:",e); }
+    await addHistory("Thêm VĐV", newPlayer.name, `Tier ${newPlayer.tier}`);
+  };
+
+  const handleAdjust=async()=>{
     const p=adjModal;
     const val=parseFloat(adjForm.value);
     if(isNaN(val))return;
-    setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,boom:Math.round((pl.boom+val)*1000)/1000}:pl)}));
-    setHistory(h=>[{id:Date.now(),action:"Điều chỉnh điểm",player:p.name,detail:`${val>0?"+":""}${val} | ${adjForm.note||adjForm.type||"—"}`,time:new Date().toLocaleString("vi-VN")},...h]);
+    const newBoom=Math.round((p.boom+val)*1000)/1000;
+    setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,boom:newBoom}:pl)}));
     setAdjModal(null);setAdjForm({type:"",value:0,note:""});
     showNotif(`Đã cập nhật điểm ${p.name}`);
+    try {
+      await sbFetch(`players?id=eq.${p.id}`,{method:"PATCH",body:JSON.stringify({boom:newBoom})});
+    } catch(e){ console.error("adjust:",e); }
+    await addHistory("Điều chỉnh điểm", p.name, `${val>0?"+":""}${val} | ${adjForm.note||adjForm.type||"—"}`);
   };
 
-  const handleTierChange=(p,newTier)=>{
-    setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,tier:newTier,boom:TIER_BOOM[newTier]}:pl)}));
-    setHistory(h=>[{id:Date.now(),action:"Đổi Tier",player:p.name,detail:`${p.tier} → ${newTier}`,time:new Date().toLocaleString("vi-VN")},...h]);
+  const handleTierChange=async(p,newTier)=>{
+    const newBoom=TIER_BOOM[newTier];
+    setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,tier:newTier,boom:newBoom}:pl)}));
     showNotif(`Cập nhật Tier ${p.name}`);
+    try {
+      await sbFetch(`players?id=eq.${p.id}`,{method:"PATCH",body:JSON.stringify({tier:newTier,boom:newBoom})});
+    } catch(e){ console.error("tier change:",e); }
+    await addHistory("Đổi Tier", p.name, `${p.tier} → ${newTier}`);
+  };
+
+  const handleDeletePlayer=async(p)=>{
+    setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].filter(pl=>pl.id!==p.id)}));
+    setDeleteConfirm(null);
+    showNotif(`Đã xóa VĐV ${p.name}`,"ok");
+    try {
+      await sbFetch(`players?id=eq.${p.id}`,{method:"DELETE"});
+    } catch(e){ console.error("delete:",e); }
+    await addHistory("Xóa VĐV", p.name, `Tier ${p.tier} | ${p.gender==="male"?"Nam":"Nữ"}`);
+  };
+
+  const handleEditPlayer=async()=>{
+    const p=editModal;
+    if(!editForm.name.trim())return;
+    const newBoom=editForm.tier!==p.tier?TIER_BOOM[editForm.tier]:p.boom;
+    const newRemark=editForm.remark||"";
+    if(editForm.gender!==p.gender){
+      setPlayers(prev=>({
+        ...prev,
+        [p.gender]:prev[p.gender].filter(pl=>pl.id!==p.id),
+        [editForm.gender]:[...prev[editForm.gender],{...p,name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark}],
+      }));
+    } else {
+      setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,name:editForm.name,tier:editForm.tier,boom:newBoom,remark:newRemark}:pl)}));
+    }
+    setEditModal(null);
+    showNotif(`Đã cập nhật VĐV ${editForm.name}`);
+    try {
+      await sbFetch(`players?id=eq.${p.id}`,{method:"PATCH",body:JSON.stringify({name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark})});
+    } catch(e){ console.error("edit:",e); }
+    await addHistory("Sửa VĐV", editForm.name, `Tier ${editForm.tier} | ${editForm.gender==="male"?"Nam":"Nữ"}`);
+  };
+
+  const handleResetData=async()=>{
+    const allInit=[
+      ...INIT.male.map(p=>({id:p.id,name:p.name,tier:p.tier,boom:p.boom,gender:"male"})),
+      ...INIT.female.map(p=>({id:p.id,name:p.name,tier:p.tier,boom:p.boom,gender:"female"})),
+    ];
+    setPlayers(INIT);
+    setHistory([]);
+    showNotif("Đã khôi phục dữ liệu gốc");
+    try {
+      await sbFetch("players",{method:"DELETE",headers:{"Prefer":"return=minimal"}});
+      await sbFetch("history",{method:"DELETE",headers:{"Prefer":"return=minimal"}});
+      await sbFetch("players",{method:"POST",body:JSON.stringify(allInit)});
+    } catch(e){ console.error("reset:",e); }
   };
 
   const toggleMm=(p)=>{
@@ -216,12 +412,15 @@ export default function App(){
     {key:"ranking",icon:"🏆",label:"Xếp hạng"},
     {key:"matchmake",icon:"⚔️",label:"Ghép kèo"},
     {key:"adjust",icon:"⚡",label:"Điều chỉnh"},
+    {key:"register",icon:"📝",label:"Đăng ký"},
     {key:"history",icon:"📋",label:"Lịch sử"},
     {key:"rules",icon:"📜",label:"Quy định"},
   ];
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
   return (
+    <>
+    <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.bg} 0%,${C.bg2} 60%,${C.bg3} 100%)`,color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden"}}>
       {/* Ambient glows */}
       <div style={{position:"fixed",top:-150,left:-150,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,107,53,0.09) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
@@ -235,7 +434,7 @@ export default function App(){
             <span style={{fontSize:26,filter:"drop-shadow(0 0 10px rgba(255,107,53,0.7))"}}>🏓</span>
             <div>
               <div style={{fontSize:16,fontWeight:900,letterSpacing:3,background:"linear-gradient(90deg,#FF6B35,#FFB347)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",lineHeight:1}}>PICKLEBOOM</div>
-              <div style={{fontSize:9,color:C.dim,letterSpacing:1,marginTop:1}}>Đà Nẵng · Quản lý điểm</div>
+              <div style={{fontSize:9,color:C.dim,letterSpacing:1,marginTop:1}}>Đà Nẵng · <span style={{color:dbReady?"#4ADE80":"#FFB347"}}>{dbReady?"● Online":"● Connecting..."}</span></div>
             </div>
           </div>
           {/* Auth */}
@@ -246,6 +445,7 @@ export default function App(){
                 <div style={{fontSize:9,color:C.dim}}>Admin</div>
               </div>
               <button onClick={handleLogout} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>Đăng xuất</button>
+              <button onClick={()=>{if(window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}} title="Reset dữ liệu gốc">↺</button>
             </div>
           ):(
             <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{background:"rgba(255,107,53,0.12)",border:`1px solid rgba(255,107,53,0.35)`,color:"#FF6B35",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
@@ -254,6 +454,13 @@ export default function App(){
           )}
         </div>
       </header>
+
+      {/* ── SYNCING INDICATOR ── */}
+      {syncing&&(
+        <div style={{position:"fixed",top:56,left:"50%",transform:"translateX(-50%)",zIndex:299,padding:"6px 16px",borderRadius:20,background:"rgba(255,107,53,0.15)",border:"1px solid rgba(255,107,53,0.3)",fontSize:11,color:"#FF6B35",fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+          <span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Đang đồng bộ...
+        </div>
+      )}
 
       {/* ── NOTIFICATION ── */}
       {notif&&(
@@ -367,8 +574,13 @@ export default function App(){
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                         <span style={{fontWeight:700,fontSize:14,color:C.text}}>{p.name}</span>
-                        {p.isC&&<span style={{fontSize:9,background:C.orange,color:"#fff",padding:"1px 5px",borderRadius:8,fontWeight:800}}>C</span>}
+
                       </div>
+                      {p.remark&&(
+                        <div style={{fontSize:10,color:"#FFB347",marginTop:3,fontStyle:"italic",display:"flex",alignItems:"center",gap:4}}>
+                          <span>📝</span><span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.remark}</span>
+                        </div>
+                      )}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         {isAdmin?(
                           <select value={p.tier} onChange={e=>handleTierChange(p,e.target.value)}
@@ -381,12 +593,22 @@ export default function App(){
                         <BoomBadge boom={p.boom} tier={p.tier}/>
                       </div>
                     </div>
-                    {/* Action */}
+                    {/* Actions */}
                     {isAdmin?(
-                      <button onClick={()=>{setAdjModal(p);setAdjForm({type:"",value:0,note:""}); }}
-                        style={{background:"rgba(255,107,53,0.12)",border:`1px solid rgba(255,107,53,0.35)`,color:C.orange,borderRadius:10,padding:"8px 12px",cursor:"pointer",fontSize:12,fontWeight:700,flexShrink:0}}>
-                        ⚡
-                      </button>
+                      <div style={{display:"flex",gap:6,flexShrink:0}}>
+                        <button onClick={()=>{setAdjModal(p);setAdjForm({type:"",value:0,note:""}); }}
+                          style={{background:"rgba(255,107,53,0.12)",border:"1px solid rgba(255,107,53,0.35)",color:C.orange,borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14,fontWeight:700}} title="Điều chỉnh điểm">
+                          ⚡
+                        </button>
+                        <button onClick={()=>{setEditModal(p);setEditForm({name:p.name,tier:p.tier,gender:p.gender,remark:p.remark||""});}}
+                          style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Sửa thông tin">
+                          ✏️
+                        </button>
+                        <button onClick={()=>setDeleteConfirm(p)}
+                          style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Xóa VĐV">
+                          🗑️
+                        </button>
+                      </div>
                     ):(
                       <span style={{fontSize:16,flexShrink:0}}>🔒</span>
                     )}
@@ -631,6 +853,113 @@ export default function App(){
           </div>
         )}
 
+        {/* ════ ĐĂNG KÝ THÀNH VIÊN ════ */}
+        {tab==="register"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            {/* Public registration form */}
+            {!regSubmitted?(
+              <Card>
+                <div style={{textAlign:"center",marginBottom:20}}>
+                  <div style={{fontSize:28,marginBottom:6}}>🏓</div>
+                  <div style={{fontSize:18,fontWeight:800,color:C.orange}}>Đăng ký thành viên</div>
+                  <div style={{fontSize:12,color:C.muted,marginTop:4}}>Pickleboom Pickleball Club – Đà Nẵng</div>
+                </div>
+                {[
+                  {label:"Họ và tên *",node:<input value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} style={MS} placeholder="Nhập họ tên đầy đủ..."/>},
+                  {label:"Email *",node:<input value={regForm.email} onChange={e=>setRegForm(f=>({...f,email:e.target.value}))} style={MS} placeholder="example@email.com" type="email"/>},
+                  {label:"Điểm trình PVNA *",node:<input value={regForm.pvna} onChange={e=>setRegForm(f=>({...f,pvna:e.target.value}))} style={MS} placeholder="VD: 2.65 hoặc không biết nhập 0"/>},
+                  {label:"Giới tính",node:(
+                    <div style={{display:"flex",gap:8}}>
+                      {["male","female"].map(g=>(
+                        <button key={g} onClick={()=>setRegForm(f=>({...f,gender:g}))} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid",borderColor:regForm.gender===g?C.orange:"rgba(255,255,255,0.1)",background:regForm.gender===g?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:regForm.gender===g?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:14}}>
+                          {g==="male"?"👨 Nam":"👩 Nữ"}
+                        </button>
+                      ))}
+                    </div>
+                  )},
+                  {label:"Ghi chú (tuỳ chọn)",node:<input value={regForm.note} onChange={e=>setRegForm(f=>({...f,note:e.target.value}))} style={MS} placeholder="Kinh nghiệm, câu hỏi..."/>},
+                ].map(({label,node},i)=>(
+                  <div key={i} style={{marginBottom:14}}>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:6,textTransform:"uppercase"}}>{label}</label>
+                    {node}
+                  </div>
+                ))}
+                <button
+                  onClick={handleRegister}
+                  disabled={regLoading||!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim()}
+                  style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"rgba(255,255,255,0.08)":`linear-gradient(90deg,${C.orange},${C.orange2})`,color:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"#666":"#fff",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"none":"0 4px 16px rgba(255,107,53,0.4)",transition:"all 0.2s"}}>
+                  {regLoading?"⏳ Đang gửi...":"✅ Gửi đăng ký"}
+                </button>
+                <div style={{fontSize:11,color:C.dim,textAlign:"center",marginTop:12}}>Sau khi đăng ký, BTC sẽ xem xét và liên hệ qua email</div>
+              </Card>
+            ):(
+              <Card>
+                <div style={{textAlign:"center",padding:"20px 0"}}>
+                  <div style={{fontSize:48,marginBottom:12}}>🎉</div>
+                  <div style={{fontSize:18,fontWeight:800,color:"#4ADE80",marginBottom:8}}>Đăng ký thành công!</div>
+                  <div style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.6}}>Cảm ơn bạn đã đăng ký tham gia<br/>BTC sẽ liên hệ qua email trong thời gian sớm nhất</div>
+                  <button onClick={()=>setRegSubmitted(false)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                    📝 Đăng ký thêm
+                  </button>
+                </div>
+              </Card>
+            )}
+
+            {/* Admin: view registrations */}
+            {isAdmin&&(
+              <Card>
+                <SectionTitle>📋 Danh sách đăng ký ({regList.length})</SectionTitle>
+                {regList.length===0?(
+                  <div style={{textAlign:"center",color:C.dim,padding:"20px 0",fontSize:13}}>Chưa có đơn đăng ký nào</div>
+                ):(
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {/* Filter badges */}
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:4}}>
+                      {["all","pending","approved","rejected"].map(s=>{
+                        const count=s==="all"?regList.length:regList.filter(r=>r.status===s).length;
+                        const colors={all:C.orange,pending:"#FBBF24",approved:"#4ADE80",rejected:"#F87171"};
+                        return(
+                          <span key={s} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:`${colors[s]}22`,color:colors[s],border:`1px solid ${colors[s]}44`}}>
+                            {s==="all"?"Tất cả":s==="pending"?"Chờ duyệt":s==="approved"?"Đã duyệt":"Từ chối"} ({count})
+                          </span>
+                        );
+                      })}
+                    </div>
+                    {regList.map(reg=>(
+                      <div key={reg.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",border:`1px solid ${reg.status==="approved"?"rgba(74,222,128,0.25)":reg.status==="rejected"?"rgba(248,113,113,0.2)":"rgba(255,255,255,0.08)"}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                          <div style={{flex:1}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                              <span style={{fontWeight:800,fontSize:14,color:C.text}}>{reg.gender==="male"?"👨":"👩"} {reg.name}</span>
+                              <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontWeight:700,
+                                background:reg.status==="approved"?"rgba(74,222,128,0.15)":reg.status==="rejected"?"rgba(248,113,113,0.15)":"rgba(251,191,36,0.15)",
+                                color:reg.status==="approved"?"#4ADE80":reg.status==="rejected"?"#F87171":"#FBBF24"}}>
+                                {reg.status==="approved"?"✅ Đã duyệt":reg.status==="rejected"?"❌ Từ chối":"⏳ Chờ duyệt"}
+                              </span>
+                            </div>
+                            <div style={{fontSize:12,color:C.muted,display:"flex",flexWrap:"wrap",gap:"4px 16px"}}>
+                              <span>✉️ {reg.email}</span>
+                              <span>📊 PVNA: <span style={{color:C.orange,fontWeight:700}}>{reg.pvna}</span></span>
+                              {reg.note&&<span>💬 {reg.note}</span>}
+                            </div>
+                            <div style={{fontSize:10,color:C.dim,marginTop:4}}>🕐 {reg.time}</div>
+                          </div>
+                          {reg.status==="pending"&&(
+                            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                              <button onClick={()=>handleApproveReg(reg)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(74,222,128,0.2)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>✅ Duyệt</button>
+                              <button onClick={()=>handleRejectReg(reg)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(248,113,113,0.15)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>❌ Từ chối</button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Card>
+            )}
+          </div>
+        )}
+
         {/* ════ RULES ════ */}
         {tab==="rules"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
@@ -689,6 +1018,7 @@ export default function App(){
               {label:"Tên VĐV",node:<input value={newPlayer.name} onChange={e=>setNewPlayer(p=>({...p,name:e.target.value}))} style={MS} placeholder="Nhập tên..."/>},
               {label:"Giới tính",node:<select value={newPlayer.gender} onChange={e=>setNewPlayer(p=>({...p,gender:e.target.value}))} style={MS}><option value="male">Nam</option><option value="female">Nữ</option></select>},
               {label:"Tier",node:<select value={newPlayer.tier} onChange={e=>setNewPlayer(p=>({...p,tier:e.target.value}))} style={MS}>{TIERS.map(t=><option key={t} value={t}>Tier {t} — {TIER_BOOM[t]}</option>)}</select>},
+              {label:"Ghi chú / Lý do (tuỳ chọn)",node:<input value={newPlayer.remark||""} onChange={e=>setNewPlayer(p=>({...p,remark:e.target.value}))} style={MS} placeholder="VD: +0.05 Vô địch WeekBoom1 21/01"/>},
             ].map(({label,node},i)=>(
               <div key={i} style={{marginBottom:12}}>
                 <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>{label}</label>
@@ -779,12 +1109,64 @@ export default function App(){
           </div>
         </div>
       )}
+
+      {/* ── EDIT PLAYER MODAL ── */}
+      {editModal&&isAdmin&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setEditModal(null)}>
+          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
+            <div style={{fontSize:16,fontWeight:800,color:"#60A5FA",marginBottom:18}}>✏️ Sửa thông tin VĐV</div>
+            <div style={{padding:"10px 14px",background:"rgba(96,165,250,0.08)",borderRadius:10,marginBottom:16,fontSize:13,color:C.muted}}>
+              Đang sửa: <span style={{color:C.text,fontWeight:700}}>{editModal.name}</span>
+            </div>
+            {[
+              {label:"Tên VĐV",node:<input value={editForm.name} onChange={e=>setEditForm(f=>({...f,name:e.target.value}))} style={MS} placeholder="Nhập tên..."/>},
+              {label:"Giới tính",node:<select value={editForm.gender} onChange={e=>setEditForm(f=>({...f,gender:e.target.value}))} style={MS}><option value="male">Nam</option><option value="female">Nữ</option></select>},
+              {label:"Tier",node:<select value={editForm.tier} onChange={e=>setEditForm(f=>({...f,tier:e.target.value}))} style={MS}>{TIERS.map(t=><option key={t} value={t}>Tier {t} — {TIER_BOOM[t]}</option>)}</select>},
+              {label:"Ghi chú / Lý do thay đổi",node:<input value={editForm.remark||""} onChange={e=>setEditForm(f=>({...f,remark:e.target.value}))} style={MS} placeholder="VD: +0.03 Á Quân WeekBoom2 31/01"/>},
+            ].map(({label,node},i)=>(
+              <div key={i} style={{marginBottom:12}}>
+                <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>{label}</label>
+                {node}
+              </div>
+            ))}
+            <div style={{display:"flex",gap:10,marginTop:18}}>
+              <button onClick={()=>setEditModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
+              <button onClick={handleEditPlayer} style={{flex:2,background:"linear-gradient(90deg,#60A5FA,#3B82F6)",border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(96,165,250,0.35)"}}>💾 Lưu thay đổi</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── DELETE CONFIRM MODAL ── */}
+      {deleteConfirm&&isAdmin&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)",padding:"20px"}} onClick={()=>setDeleteConfirm(null)}>
+          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(239,68,68,0.4)",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 24px 60px rgba(0,0,0,0.7)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:44,marginBottom:14}}>🗑️</div>
+            <div style={{fontSize:17,fontWeight:800,color:"#EF4444",marginBottom:8}}>Xóa VĐV?</div>
+            <div style={{fontSize:14,color:C.muted,marginBottom:6,lineHeight:1.5}}>
+              Bạn có chắc muốn xóa
+            </div>
+            <div style={{fontSize:18,fontWeight:800,color:C.text,marginBottom:4}}>{deleteConfirm.name}</div>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:8,marginBottom:20}}>
+              <TierChip tier={deleteConfirm.tier}/>
+              <BoomBadge boom={deleteConfirm.boom} tier={deleteConfirm.tier}/>
+              <span style={{fontSize:13,color:deleteConfirm.gender==="male"?"#60A5FA":"#F9A8D4"}}>{deleteConfirm.gender==="male"?"♂ Nam":"♀ Nữ"}</span>
+            </div>
+            <div style={{padding:"10px 14px",background:"rgba(239,68,68,0.08)",borderRadius:10,fontSize:12,color:"#EF4444",marginBottom:20}}>
+              ⚠️ Hành động này không thể hoàn tác!
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>setDeleteConfirm(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
+              <button onClick={()=>handleDeletePlayer(deleteConfirm)} style={{flex:1,background:"linear-gradient(90deg,#EF4444,#DC2626)",border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(239,68,68,0.4)"}}>Xóa</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
+    </>
   );
 }
 
-// Modal input shared style
-const MS = {
-  width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,107,53,0.25)",
-  borderRadius:10,padding:"11px 14px",color:"#E5E7EB",fontSize:15,outline:"none",boxSizing:"border-box",
-};
+
