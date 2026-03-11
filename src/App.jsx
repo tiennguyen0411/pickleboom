@@ -207,10 +207,6 @@ export default function App(){
   const [notif,setNotif]=useState(null);
   const [auth,setAuth]=useState({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});
   const [rankGender,setRankGender]=useState("male");
-  const [mmSearch,setMmSearch]=useState("");
-  const [mmGender,setMmGender]=useState("all");
-  const [mmSel,setMmSel]=useState([]);
-  const [mmResult,setMmResult]=useState(null);
   const [dbReady,setDbReady]=useState(false);
   const [syncing,setSyncing]=useState(false);
   const [regForm,setRegForm]=useState({name:"",email:"",pvna:"",gender:"male",note:""});
@@ -229,40 +225,44 @@ export default function App(){
   const [tourRegSubmitted,setTourRegSubmitted]=useState(false);
   const [showTourRegAdmin,setShowTourRegAdmin]=useState(null); // tourId being managed
 
-  // ── Load data from Supabase on mount ──
-  useEffect(()=>{
-    const load = async () => {
-      setSyncing(true);
-      try {
-        const [pRows, hRows, rRows, tRows] = await Promise.all([
-          sbFetch("players?select=*&order=id.asc"),
-          sbFetch("history?select=*&order=created_at.desc&limit=100"),
-          sbFetch("registrations?select=*&order=id.desc&limit=200"),
-          sbFetch("tournaments?select=*&order=id.desc&limit=100"),
-        ]);
-        if (pRows && pRows.length > 0) {
-          setPlayers(rowsToPlayers(pRows));
-        } else {
-          // First time: seed database with INIT data
-          await seedDatabase();
-        }
-        if (hRows) {
-          setHistory(hRows.map(r=>({id:r.id,action:r.action,player:r.player,detail:r.detail||"",time:r.time||""})));
-        }
-        if (Array.isArray(rRows)) setRegList(rRows);
-        if (Array.isArray(tRows)) {
-          const tours = tRows.map(t=>({...t, matches: typeof t.matches==="string"?JSON.parse(t.matches||"[]"):t.matches||[], tourRegs: typeof t.tour_regs==="string"?JSON.parse(t.tour_regs||"[]"):(t.tourRegs||[])}));
-          setTournaments(tours);
-        }
-        setDbReady(true);
-      } catch(e) {
-        console.error("Supabase load error:", e);
-        setDbReady(true); // fall through to local state
+  // ── Load data from Supabase ──
+  const loadFromDB = async () => {
+    setSyncing(true);
+    try {
+      const [pRows, hRows, rRows, tRows] = await Promise.all([
+        sbFetch("players?select=*&order=id.asc"),
+        sbFetch("history?select=*&order=created_at.desc&limit=100"),
+        sbFetch("registrations?select=*&order=id.desc&limit=200"),
+        sbFetch("tournaments?select=*&order=id.desc&limit=100"),
+      ]);
+      if (pRows && pRows.length > 0) {
+        setPlayers(rowsToPlayers(pRows));
+      } else {
+        await seedDatabase();
       }
-      setSyncing(false);
-    };
-    load();
-  }, []);
+      if (Array.isArray(hRows)) {
+        setHistory(hRows.map(r=>({id:r.id,action:r.action,player:r.player,detail:r.detail||"",time:r.time||""})));
+      }
+      if (Array.isArray(rRows)) setRegList(rRows);
+      if (Array.isArray(tRows) && tRows.length >= 0) {
+        const tours = tRows.map(t=>({
+          ...t,
+          matches: typeof t.matches==="string" ? JSON.parse(t.matches||"[]") : (t.matches||[]),
+          tourRegs: typeof t.tour_regs==="string" ? JSON.parse(t.tour_regs||"[]") : (t.tour_regs||[]),
+        }));
+        setTournaments(tours);
+      }
+      setDbReady(true);
+      showNotif("Đã tải dữ liệu từ server");
+    } catch(e) {
+      console.error("Supabase load error:", e);
+      showNotif("Lỗi kết nối server","err");
+      setDbReady(true);
+    }
+    setSyncing(false);
+  };
+
+  useEffect(()=>{ loadFromDB(); }, []);
 
   const seedDatabase = async () => {
     const allInit = [
@@ -296,12 +296,6 @@ export default function App(){
 
   const topMale=useMemo(()=>[...players.male].sort((a,b)=>b.boom-a.boom).slice(0,5),[players]);
   const topFemale=useMemo(()=>[...players.female].sort((a,b)=>b.boom-a.boom).slice(0,5),[players]);
-
-  const mmPool=useMemo(()=>allPlayers.filter(p=>{
-    const ms=p.name.toLowerCase().includes(mmSearch.toLowerCase());
-    const mg=mmGender==="all"||p.gender===mmGender;
-    return ms&&mg;
-  }),[allPlayers,mmSearch,mmGender]);
 
   const isAdmin=auth.loggedIn;
   const userRole = auth.user?.role || null;
@@ -446,18 +440,6 @@ export default function App(){
     setMmSel(prev=>prev.find(x=>x.id===p.id)?prev.filter(x=>x.id!==p.id):prev.length>=4?prev:[...prev,p]);
   };
 
-  const analyzePairing=()=>{
-    if(mmSel.length!==4)return;
-    const [a,b,c,d]=mmSel;
-    const pairs=[{tA:[a,b],tB:[c,d]},{tA:[a,c],tB:[b,d]},{tA:[a,d],tB:[b,c]}].map(p=>{
-      const sA=Math.round(p.tA.reduce((s,x)=>s+x.boom,0)*1000)/1000;
-      const sB=Math.round(p.tB.reduce((s,x)=>s+x.boom,0)*1000)/1000;
-      const diff=Math.round(Math.abs(sA-sB)*1000)/1000;
-      return{...p,sA,sB,diff,ok:diff<=0.05};
-    }).sort((a,b)=>a.diff-b.diff);
-    setMmResult(pairs);
-  };
-
   // ── Tournament handlers ──
   const handleCreateTour = async () => {
     if(!tourForm.name.trim()||!tourForm.date.trim()) return;
@@ -591,7 +573,6 @@ export default function App(){
     {key:"ranking",icon:"🏆",label:"Xếp hạng"},
     {key:"tournament",icon:"🏅",label:"Giải đấu"},
     {key:"roles",icon:"🔐",label:"Phân quyền"},
-    {key:"matchmake",icon:"⚔️",label:"Ghép kèo"},
     {key:"adjust",icon:"⚡",label:"Điều chỉnh"},
     {key:"register",icon:"📝",label:"Đăng ký"},
     {key:"history",icon:"📋",label:"Lịch sử"},
@@ -599,9 +580,15 @@ export default function App(){
   ];
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
+  useEffect(()=>{
+    const el=document.createElement("style");
+    el.textContent="@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}";
+    document.head.appendChild(el);
+    return()=>document.head.removeChild(el);
+  },[]);
+
   return (
     <>
-    <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}`}</style>
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.bg} 0%,${C.bg2} 60%,${C.bg3} 100%)`,color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden"}}>
       {/* Ambient glows */}
       <div style={{position:"fixed",top:-150,left:-150,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,107,53,0.09) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
@@ -636,10 +623,16 @@ export default function App(){
         </div>
       </header>
 
-      {/* ── SYNCING INDICATOR ── */}
-      {syncing&&(
+      {/* ── SYNCING / RELOAD ── */}
+      {syncing?(
         <div style={{position:"fixed",top:56,left:"50%",transform:"translateX(-50%)",zIndex:299,padding:"6px 16px",borderRadius:20,background:"rgba(255,107,53,0.15)",border:"1px solid rgba(255,107,53,0.3)",fontSize:11,color:"#FF6B35",fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Đang đồng bộ...
+        </div>
+      ):(
+        <div style={{position:"fixed",top:56,right:12,zIndex:299}}>
+          <button onClick={loadFromDB} title="Tải lại dữ liệu từ server" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:20,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
+            🔄 Tải lại
+          </button>
         </div>
       )}
 
@@ -723,7 +716,9 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.orange}}>VĐV ({filtered.length})</div>
               {isAdmin?(
-                {can("canAddPlayers")&&<button onClick={()=>setShowAddModal(true)} style={{background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>}
+                can("canAddPlayers")
+                  ? <button onClick={()=>setShowAddModal(true)} style={{background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>
+                  : null
               ):(
                 <span style={{fontSize:11,color:C.dim,display:"flex",alignItems:"center",gap:4}}>🔒 Chỉ Admin</span>
               )}
@@ -828,125 +823,6 @@ export default function App(){
                   <span style={{fontSize:15,fontWeight:800,color:i<3?"#FF6B35":C.muted,minWidth:38,textAlign:"right"}}>{p.boom.toFixed(2)}</span>
                 </div>
               ))}
-            </Card>
-          </div>
-        )}
-
-        {/* ════ MATCHMAKE ════ */}
-        {tab==="matchmake"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:14}}>
-            <div style={{fontSize:18,fontWeight:800,color:C.orange}}>⚔️ Ghép kèo cân bằng</div>
-
-            {/* Selected slots */}
-            <Card>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                <SectionTitle>Đội hình ({mmSel.length}/4)</SectionTitle>
-                {mmSel.length>0&&<button onClick={()=>{setMmSel([]);setMmResult(null);}} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.4)",color:"#EF4444",borderRadius:8,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:700}}>Xóa tất cả</button>}
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
-                {[0,1,2,3].map(i=>{
-                  const p=mmSel[i];
-                  return(
-                    <div key={i} style={{borderRadius:12,border:p?`2px solid ${TIER_COLORS[p.tier]}66`:"2px dashed rgba(255,107,53,0.2)",padding:"10px 6px",textAlign:"center",background:p?TIER_COLORS[p.tier]+"10":"rgba(255,255,255,0.02)",minHeight:90,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
-                      {p?(
-                        <>
-                          <div style={{fontSize:16}}>{p.gender==="male"?"♂":"♀"}</div>
-                          <div style={{fontSize:10,fontWeight:700,lineHeight:1.3,color:C.text,textAlign:"center",wordBreak:"break-word"}}>{p.name}</div>
-                          <TierChip tier={p.tier}/>
-                          <div style={{fontSize:12,fontWeight:800,color:TIER_COLORS[p.tier]}}>{p.boom.toFixed(2)}</div>
-                          <button onClick={()=>toggleMm(p)} style={{fontSize:9,background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",color:"#EF4444",borderRadius:6,padding:"2px 6px",cursor:"pointer",marginTop:2}}>✕</button>
-                        </>
-                      ):(
-                        <div style={{color:"rgba(255,107,53,0.25)",fontSize:10}}>VĐV {i+1}</div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-              {mmSel.length===4&&(
-                <button onClick={analyzePairing} style={{marginTop:14,width:"100%",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:12,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:800,boxShadow:"0 6px 20px rgba(255,107,53,0.4)"}}>
-                  ⚔️ Phân tích kèo
-                </button>
-              )}
-              {mmSel.length<4&&mmSel.length>0&&(
-                <div style={{textAlign:"center",marginTop:10,fontSize:12,color:C.dim}}>Chọn thêm {4-mmSel.length} VĐV</div>
-              )}
-            </Card>
-
-            {/* Results */}
-            {mmResult&&(
-              <Card>
-                <SectionTitle>📊 Kết quả — 3 phương án</SectionTitle>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  {mmResult.map((r,i)=>{
-                    const color=r.ok?"#4ADE80":r.diff<=0.1?"#FFB347":"#EF4444";
-                    const label=r.ok?"🟢 Cân bằng":r.diff<=0.1?"🟡 Chấp nhận":"🔴 Chênh lệch";
-                    return(
-                      <div key={i} style={{borderRadius:14,border:`2px solid ${i===0?color+"88":"rgba(255,255,255,0.08)"}`,background:i===0?color+"0d":"rgba(255,255,255,0.02)",padding:"14px",position:"relative",overflow:"hidden"}}>
-                        {i===0&&<div style={{position:"absolute",top:0,right:0,background:color,color:"#111",fontSize:9,fontWeight:800,padding:"3px 10px",borderRadius:"0 12px 0 10px",letterSpacing:1}}>TỐT NHẤT</div>}
-                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                          <span style={{fontSize:12,fontWeight:700,color}}>{label}</span>
-                          <span style={{fontSize:11,color:C.muted}}>±{r.diff.toFixed(3)}</span>
-                        </div>
-                        {/* Teams stacked on mobile */}
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                          {[{team:r.tA,sum:r.sA,label:"ĐỘI A",col:"#60A5FA"},{team:r.tB,sum:r.sB,label:"ĐỘI B",col:"#F9A8D4"}].map(({team,sum,label:lbl,col})=>(
-                            <div key={lbl} style={{background:col+"0d",borderRadius:10,padding:"10px 12px",border:`1px solid ${col}22`}}>
-                              <div style={{fontSize:10,fontWeight:800,color:col,marginBottom:6,letterSpacing:0.5}}>{lbl}</div>
-                              {team.map(pl=>(
-                                <div key={pl.id} style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                                  <span style={{fontSize:12}}>{pl.gender==="male"?"♂":"♀"}</span>
-                                  <span style={{flex:1,fontSize:13,fontWeight:600}}>{pl.name}</span>
-                                  <span style={{fontSize:12,fontWeight:700,color:TIER_COLORS[pl.tier]}}>{pl.boom.toFixed(2)}</span>
-                                </div>
-                              ))}
-                              <div style={{borderTop:`1px solid ${col}22`,marginTop:6,paddingTop:6,display:"flex",justifyContent:"space-between"}}>
-                                <span style={{fontSize:11,color:C.muted}}>Tổng</span>
-                                <span style={{fontSize:16,fontWeight:900,color:col}}>{sum.toFixed(3)}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{marginTop:12,padding:"8px 12px",background:"rgba(255,255,255,0.03)",borderRadius:8,fontSize:11,color:C.dim,textAlign:"center"}}>
-                  Sai số cho phép <span style={{color:"#4ADE80",fontWeight:700}}>≤ 0.05</span>
-                </div>
-              </Card>
-            )}
-
-            {/* Player pool */}
-            <Card>
-              <SectionTitle>👥 Chọn VĐV ({mmPool.length})</SectionTitle>
-              <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-                <input placeholder="🔍 Tìm..." value={mmSearch} onChange={e=>setMmSearch(e.target.value)}
-                  style={{flex:1,minWidth:120,background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 12px",color:C.text,fontSize:13,outline:"none"}}/>
-                <select value={mmGender} onChange={e=>setMmGender(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"9px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
-                  <option value="all">Tất cả</option><option value="male">Nam</option><option value="female">Nữ</option>
-                </select>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,maxHeight:380,overflowY:"auto"}}>
-                {mmPool.map(p=>{
-                  const sel=!!mmSel.find(x=>x.id===p.id);
-                  const full=mmSel.length>=4&&!sel;
-                  return(
-                    <button key={p.id} onClick={()=>!full&&toggleMm(p)}
-                      style={{display:"flex",alignItems:"center",gap:8,padding:"10px 10px",borderRadius:10,border:sel?`2px solid ${TIER_COLORS[p.tier]}`:`1px solid rgba(255,255,255,0.07)`,background:sel?TIER_COLORS[p.tier]+"18":"rgba(255,255,255,0.03)",cursor:full?"not-allowed":"pointer",opacity:full?0.4:1,textAlign:"left",transition:"all 0.15s"}}>
-                      <span style={{fontSize:14,flexShrink:0}}>{p.gender==="male"?"♂":"♀"}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:sel?"#fff":C.text}}>{p.name}</div>
-                        <div style={{display:"flex",gap:5,marginTop:2}}>
-                          <span style={{fontSize:10,fontWeight:800,color:TIER_COLORS[p.tier]}}>{p.tier}</span>
-                          <span style={{fontSize:10,color:TIER_COLORS[p.tier]}}>{p.boom.toFixed(2)}</span>
-                        </div>
-                      </div>
-                      {sel&&<span style={{color:"#4ADE80",fontSize:16,flexShrink:0}}>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
             </Card>
           </div>
         )}
