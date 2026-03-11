@@ -10,7 +10,6 @@ const TIER_BOOM = {
 const TIERS = ["1+","1-","2++","2+","2","2-","3+","3"];
 const ADMIN_CREDENTIALS = [
   {username:"admin",    password:"pickleboom@2026", label:"Administrator", role:"admin"},
-  {username:"huypham",  password:"captain@2026",    label:"Huy Phạm",      role:"mod"},
   {username:"hahoang",  password:"mod@hahoang",     label:"Ha Hoang",      role:"mod"},
   {username:"viettan",  password:"mod@viettan",     label:"Viết Tân",      role:"mod"},
 ];
@@ -133,13 +132,13 @@ const C = {
 
 // ─── Reusable tiny components ────────────────────────────────────────────────
 function TierChip({tier}){
-  return <span style={{fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:800,border:`1px solid ${TIER_COLORS[tier]}55`,background:TIER_COLORS[tier]+"18",color:TIER_COLORS[tier],flexShrink:0}}>{tier}</span>;
+  return <span style={{fontSize:10,padding:"2px 7px",borderRadius:20,fontWeight:800,border:"1px solid "+TIER_COLORS[tier]+"55",background:TIER_COLORS[tier]+"18",color:TIER_COLORS[tier],flexShrink:0}}>{tier}</span>;
 }
 function BoomBadge({boom,tier}){
-  return <span style={{padding:"3px 10px",borderRadius:20,fontSize:13,fontWeight:800,color:TIER_COLORS[tier],background:TIER_COLORS[tier]+"1a",border:`1px solid ${TIER_COLORS[tier]}33`}}>{boom.toFixed(2)}</span>;
+  return <span style={{padding:"3px 10px",borderRadius:20,fontSize:13,fontWeight:800,color:TIER_COLORS[tier],background:TIER_COLORS[tier]+"1a",border:"1px solid "+TIER_COLORS[tier]+"33"}}>{boom.toFixed(2)}</span>;
 }
 function Card({children,style={}}){
-  return <div style={{background:"rgba(255,255,255,0.028)",border:`1px solid ${C.border}`,borderRadius:18,padding:16,...style}}>{children}</div>;
+  return <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+C.border,borderRadius:18,padding:16,...style}}>{children}</div>;
 }
 function SectionTitle({children}){
   return <div style={{fontSize:13,fontWeight:700,color:C.orange,marginBottom:12,letterSpacing:0.5,textTransform:"uppercase"}}>{children}</div>;
@@ -207,7 +206,16 @@ export default function App(){
   const [deleteConfirm,setDeleteConfirm]=useState(null);
   const [history,setHistory]=useState([]);
   const [notif,setNotif]=useState(null);
-  const [auth,setAuth]=useState({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});
+  const [auth,setAuth]=useState(()=>{
+    try {
+      const saved = sessionStorage.getItem("pb_auth");
+      if(saved){
+        const {loggedIn,user} = JSON.parse(saved);
+        if(loggedIn && user) return {loggedIn:true,user,showLogin:false,u:"",p:"",err:""};
+      }
+    } catch(e){}
+    return {loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""};
+  });
   const [rankGender,setRankGender]=useState("male");
   const [dbReady,setDbReady]=useState(false);
   const [syncing,setSyncing]=useState(false);
@@ -217,7 +225,7 @@ export default function App(){
   const [regLoading,setRegLoading]=useState(false);
   const [tournaments,setTournaments]=useState([]);
   const [showTourModal,setShowTourModal]=useState(false);
-  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:""});
+  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3"});
   const [activeTour,setActiveTour]=useState(null);
   const [showMatchModal,setShowMatchModal]=useState(false);
   const [matchForm,setMatchForm]=useState({p1:"",p2:"",p3:"",p4:"",score1:"",score2:"",round:"1"});
@@ -226,6 +234,15 @@ export default function App(){
   const [tourRegForm,setTourRegForm]=useState({tourId:"",playerName:"",contact:"",content:"single",partner:"",note:""});
   const [tourRegSubmitted,setTourRegSubmitted]=useState(false);
   const [showTourRegAdmin,setShowTourRegAdmin]=useState(null); // tourId being managed
+  // ── Referee mode state ──
+  const [refMode,setRefMode]=useState(false); // fullscreen referee UI
+  const [refPin,setRefPin]=useState("");
+  const [refPinInput,setRefPinInput]=useState("");
+  const [refPinErr,setRefPinErr]=useState("");
+  const [refTour,setRefTour]=useState(null); // tournament unlocked by PIN
+  const [refMatch,setRefMatch]=useState(null); // match being scored {id,team1,team2,round,format}
+  const [refGames,setRefGames]=useState([]); // [{g1t1,g1t2},{g2t1,g2t2},...] each game score
+  const [refConfirmed,setRefConfirmed]=useState(false);
 
   // ── Load data from Supabase ──
   const loadFromDB = async () => {
@@ -324,10 +341,14 @@ export default function App(){
 
   const handleLogin=()=>{
     const found=ADMIN_CREDENTIALS.find(c=>c.username===auth.u&&c.password===auth.p);
-    if(found){setAuth(a=>({...a,loggedIn:true,user:found,showLogin:false,err:"",u:"",p:""}));showNotif("Đăng nhập thành công");}
+    if(found){
+      sessionStorage.setItem("pb_auth", JSON.stringify({loggedIn:true,user:found}));
+      setAuth(a=>({...a,loggedIn:true,user:found,showLogin:false,err:"",u:"",p:""}));
+      showNotif("Đăng nhập thành công");
+    }
     else setAuth(a=>({...a,err:"Sai tên đăng nhập hoặc mật khẩu"}));
   };
-  const handleLogout=()=>{setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});showNotif("Đã đăng xuất");};
+  const handleLogout=()=>{sessionStorage.removeItem("pb_auth");setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});showNotif("Đã đăng xuất");};
 
   const handleRegister=async()=>{
     if(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())return;
@@ -447,10 +468,11 @@ export default function App(){
   const handleCreateTour = async () => {
     if(!tourForm.name.trim()||!tourForm.date.trim()) return;
     const id = Date.now();
-    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN")};
+    const pin = tourForm.pin.trim() || Math.floor(1000+Math.random()*9000).toString();
+    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN"), pin, bestOf:parseInt(tourForm.bestOf)||3};
     setTournaments(prev=>[tour,...prev]);
     setShowTourModal(false);
-    setTourForm({name:"",date:"",format:"double",rounds:"1",note:""});
+    setTourForm({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3"});
     setActiveTour(tour);
     setTab("tournament");
     showNotif("Đã tạo giải: "+tour.name);
@@ -466,6 +488,8 @@ export default function App(){
         tour_regs: "[]",
         status: "active",
         created: tour.created,
+        pin: tour.pin,
+        best_of: tour.bestOf,
       };
       await sbFetch("tournaments", {method:"POST", headers:{"Prefer":"return=minimal"}, body:JSON.stringify(payload)});
     } catch(e){console.error("create tour error:",e);}
@@ -570,6 +594,51 @@ export default function App(){
     try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({tourRegs:JSON.stringify(updatedRegs)})}); } catch(e){console.error(e);}
   };
 
+  // ── Referee handlers ──
+  const handleRefPinSubmit = () => {
+    const tour = tournaments.find(t => t.pin === refPinInput && t.status === "active");
+    if(tour){ setRefTour(tour); setRefPinErr(""); setRefPinInput(""); }
+    else setRefPinErr("Mã PIN không đúng hoặc giải đã kết thúc");
+  };
+
+  const handleRefStartMatch = (match) => {
+    const numGames = refTour?.bestOf || 3;
+    setRefMatch(match);
+    setRefGames(Array.from({length:numGames},()=>({t1:"",t2:""})));
+    setRefConfirmed(false);
+  };
+
+  const handleRefSaveMatch = async () => {
+    if(!refTour || !refMatch) return;
+    // Calculate total score from games
+    let s1=0, s2=0;
+    refGames.forEach(g => {
+      const g1=parseInt(g.t1)||0, g2=parseInt(g.t2)||0;
+      if(g1>0||g2>0){ if(g1>g2) s1++; else if(g2>g1) s2++; }
+    });
+    const updatedMatch = {
+      ...refMatch,
+      score1: s1,
+      score2: s2,
+      games: refGames.map(g=>({t1:parseInt(g.t1)||0,t2:parseInt(g.t2)||0})),
+      confirmed: true,
+      confirmedAt: new Date().toLocaleString("vi-VN"),
+    };
+    // Update or add match in tournament
+    const existing = (refTour.matches||[]).find(m=>m.id===refMatch.id);
+    const updatedMatches = existing
+      ? (refTour.matches||[]).map(m=>m.id===refMatch.id ? updatedMatch : m)
+      : [...(refTour.matches||[]), updatedMatch];
+    const updatedTour = {...refTour, matches: updatedMatches};
+    setTournaments(prev=>prev.map(t=>t.id===refTour.id ? updatedTour : t));
+    setRefTour(updatedTour);
+    setRefConfirmed(true);
+    try { await sbFetch(`tournaments?id=eq.${refTour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(updatedMatches)})}); }
+    catch(e){console.error(e);}
+  };
+
+  const handleRefExitMatch = () => { setRefMatch(null); setRefGames([]); setRefConfirmed(false); };
+
   const NAV=[
     {key:"dashboard",icon:"📊",label:"Tổng quan"},
     {key:"players",icon:"👥",label:"VĐV"},
@@ -592,13 +661,13 @@ export default function App(){
 
   return (
     <>
-    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.bg} 0%,${C.bg2} 60%,${C.bg3} 100%)`,color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden"}}>
+    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#111 0%,#181818 60%,#222 100%)",color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden"}}>
       {/* Ambient glows */}
       <div style={{position:"fixed",top:-150,left:-150,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,107,53,0.09) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"fixed",bottom:-120,right:-120,width:350,height:350,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,180,71,0.07) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
 
       {/* ── TOP HEADER ── */}
-      <header style={{background:"rgba(13,13,13,0.97)",borderBottom:`1px solid ${C.border}`,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.6)"}}>
+      <header style={{background:"rgba(13,13,13,0.97)",borderBottom:"1px solid "+C.border,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.6)"}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",maxWidth:900,margin:"0 auto"}}>
           {/* Logo */}
           <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -619,9 +688,14 @@ export default function App(){
               <button onClick={()=>{if(can("canResetData")&&window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}} title="Reset dữ liệu gốc">↺</button>
             </div>
           ):(
-            <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{background:"rgba(255,107,53,0.12)",border:`1px solid rgba(255,107,53,0.35)`,color:"#FF6B35",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
-              🔑 Đăng nhập
-            </button>
+<div style={{display:"flex",gap:6}}>
+              <button onClick={()=>{setRefMode(true);setRefTour(null);setRefPinInput("");setRefPinErr("");}} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                🏳️ Trọng tài
+              </button>
+              <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{background:"rgba(255,107,53,0.12)",border:"1px solid rgba(255,107,53,0.35)",color:"#FF6B35",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                🔑 Đăng nhập
+              </button>
+            </div>
           )}
         </div>
       </header>
@@ -674,7 +748,7 @@ export default function App(){
 
             {/* Top 5 tabs */}
             <Card>
-              <div style={{display:"flex",gap:0,marginBottom:14,borderRadius:10,overflow:"hidden",border:`1px solid ${C.border}`}}>
+              <div style={{display:"flex",gap:0,marginBottom:14,borderRadius:10,overflow:"hidden",border:"1px solid "+C.border}}>
                 {["male","female"].map(g=>(
                   <button key={g} onClick={()=>setRankGender(g)} style={{flex:1,padding:"9px",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:rankGender===g?C.orange:"transparent",color:rankGender===g?"#fff":C.muted,transition:"all 0.2s"}}>
                     {g==="male"?"♂ Top Nam":"♀ Top Nữ"}
@@ -683,7 +757,7 @@ export default function App(){
               </div>
               {(rankGender==="male"?topMale:topFemale).map((p,i)=>(
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:i<4?"1px solid rgba(255,107,53,0.08)":"none"}}>
-                  <span style={{width:30,textAlign:"center",fontSize:i<3?18:13,flexShrink:0}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}</span>
+                  <span style={{width:30,textAlign:"center",fontSize:i<3?18:13,flexShrink:0}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":"#"+(i+1)}</span>
                   <span style={{flex:1,fontWeight:600,fontSize:14}}>{p.name}</span>
                   <TierChip tier={p.tier}/>
                   <BoomBadge boom={p.boom} tier={p.tier}/>
@@ -702,7 +776,7 @@ export default function App(){
                     <div key={t} style={{display:"flex",alignItems:"center",gap:8}}>
                       <span style={{width:28,fontWeight:800,fontSize:12,color:TIER_COLORS[t],flexShrink:0}}>{t}</span>
                       <div style={{flex:1,height:5,background:"rgba(255,255,255,0.06)",borderRadius:4,overflow:"hidden"}}>
-                        <div style={{width:`${pct}%`,height:"100%",background:TIER_COLORS[t],borderRadius:4}}/>
+                        <div style={{width:pct+"%",height:"100%",background:TIER_COLORS[t],borderRadius:4}}/>
                       </div>
                       <span style={{width:20,fontSize:11,color:C.muted,textAlign:"right",flexShrink:0}}>{cnt}</span>
                     </div>
@@ -720,7 +794,7 @@ export default function App(){
               <div style={{fontSize:18,fontWeight:800,color:C.orange}}>VĐV ({filtered.length})</div>
               {isAdmin?(
                 can("canAddPlayers")
-                  ? <button onClick={()=>setShowAddModal(true)} style={{background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>
+                  ? <button onClick={()=>setShowAddModal(true)} style={{background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>
                   : null
               ):(
                 <span style={{fontSize:11,color:C.dim,display:"flex",alignItems:"center",gap:4}}>🔒 Chỉ Admin</span>
@@ -730,11 +804,11 @@ export default function App(){
             {/* Filters */}
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <input placeholder="🔍 Tìm tên..." value={search} onChange={e=>setSearch(e.target.value)}
-                style={{flex:1,minWidth:140,background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 12px",color:C.text,fontSize:14,outline:"none"}}/>
-              <select value={filterGender} onChange={e=>setFilterGender(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
+                style={{flex:1,minWidth:140,background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 12px",color:C.text,fontSize:14,outline:"none"}}/>
+              <select value={filterGender} onChange={e=>setFilterGender(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
                 <option value="all">Tất cả</option><option value="male">Nam</option><option value="female">Nữ</option>
               </select>
-              <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:`1px solid ${C.border}`,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
+              <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
                 <option value="all">Mọi Tier</option>
                 {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
               </select>
@@ -763,7 +837,7 @@ export default function App(){
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         {can("canEditPlayers")?(
                           <select value={p.tier} onChange={e=>handleTierChange(p,e.target.value)}
-                            style={{background:"transparent",border:`1px solid ${TIER_COLORS[p.tier]}66`,borderRadius:8,padding:"2px 6px",fontSize:11,fontWeight:800,cursor:"pointer",outline:"none",color:TIER_COLORS[p.tier]}}>
+                            style={{background:"transparent",border:"1px solid "+TIER_COLORS[p.tier]+"66",borderRadius:8,padding:"2px 6px",fontSize:11,fontWeight:800,cursor:"pointer",outline:"none",color:TIER_COLORS[p.tier]}}>
                             {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                         ):(
@@ -808,7 +882,7 @@ export default function App(){
         {tab==="ranking"&&(
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontSize:18,fontWeight:800,color:C.orange}}>Bảng xếp hạng</div>
-            <div style={{display:"flex",gap:0,borderRadius:12,overflow:"hidden",border:`1px solid ${C.border}`}}>
+            <div style={{display:"flex",gap:0,borderRadius:12,overflow:"hidden",border:"1px solid "+C.border}}>
               {["male","female"].map(g=>(
                 <button key={g} onClick={()=>setRankGender(g)} style={{flex:1,padding:"11px",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:rankGender===g?C.orange:"transparent",color:rankGender===g?"#fff":C.muted,transition:"all 0.2s"}}>
                   {g==="male"?"♂ Nam":"♀ Nữ"}
@@ -819,7 +893,7 @@ export default function App(){
               {[...players[rankGender]].sort((a,b)=>b.boom-a.boom).map((p,i)=>(
                 <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 4px",borderBottom:i<players[rankGender].length-1?"1px solid rgba(255,107,53,0.07)":"none"}}>
                   <span style={{width:36,textAlign:"center",fontSize:i<3?18:12,fontWeight:700,flexShrink:0,color:i<3?"#FF6B35":C.dim}}>
-                    {i===0?"🥇":i===1?"🥈":i===2?"🥉":`#${i+1}`}
+                    {i===0?"🥇":i===1?"🥈":i===2?"🥉":"#"+(i+1)}
                   </span>
                   <span style={{flex:1,fontWeight:i<3?700:500,fontSize:13}}>{p.name}</span>
                   <TierChip tier={p.tier}/>
@@ -840,7 +914,7 @@ export default function App(){
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:4}}>Quyền truy cập bị giới hạn</div>
                   <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Cần quyền Admin hoặc Moderator để điều chỉnh điểm trình VĐV.</div>
-                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{marginTop:10,background:"rgba(255,107,53,0.15)",border:`1px solid rgba(255,107,53,0.4)`,color:"#FF6B35",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>🔑 Đăng nhập</button>
+                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{marginTop:10,background:"rgba(255,107,53,0.15)",border:"1px solid rgba(255,107,53,0.4)",color:"#FF6B35",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>🔑 Đăng nhập</button>
                 </div>
               </div>
             )}
@@ -947,20 +1021,20 @@ export default function App(){
                 ]
               },
             ].map(({role,icon,color,bg,border,perms})=>(
-              <Card key={role} style={{border:`1px solid ${border}`}}>
+              <Card key={role} style={{border:"1px solid "+border}}>
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                  <div style={{width:40,height:40,borderRadius:12,background:bg,border:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>
+                  <div style={{width:40,height:40,borderRadius:12,background:bg,border:"1px solid "+border,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>
                   <div>
                     <div style={{fontWeight:800,fontSize:15,color}}>{ROLE_PERMISSIONS[role].label}</div>
                     <div style={{fontSize:11,color:C.muted}}>Role: <code style={{background:"rgba(255,255,255,0.07)",padding:"1px 6px",borderRadius:4,color}}>{role}</code></div>
                   </div>
                   {userRole===role&&(
-                    <span style={{marginLeft:"auto",fontSize:10,padding:"3px 10px",borderRadius:20,background:`${color}22`,color,border:`1px solid ${color}44`,fontWeight:700}}>● Đang đăng nhập</span>
+                    <span style={{marginLeft:"auto",fontSize:10,padding:"3px 10px",borderRadius:20,background:color+"22",color,border:"1px solid "+color+"44",fontWeight:700}}>● Đang đăng nhập</span>
                   )}
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:6}}>
                   {perms.map(([icon2,label,desc],i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderRadius:10,background:icon2==="✅"?"rgba(74,222,128,0.05)":"rgba(255,255,255,0.02)",border:`1px solid ${icon2==="✅"?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.06)"}`}}>
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderRadius:10,background:icon2==="✅"?"rgba(74,222,128,0.05)":"rgba(255,255,255,0.02)",border:"1px solid "+(icon2==="✅"?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.06)")}}>
                       <span style={{fontSize:14,flexShrink:0}}>{icon2}</span>
                       <div>
                         <div style={{fontSize:12,fontWeight:700,color:icon2==="✅"?"#E5E7EB":C.dim}}>{label}</div>
@@ -981,7 +1055,7 @@ export default function App(){
                     const rp = ROLE_PERMISSIONS[acc.role];
                     return(
                       <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,0.04)",borderRadius:12,border:"1px solid rgba(255,255,255,0.08)"}}>
-                        <div style={{width:36,height:36,borderRadius:10,background:rp.color+"22",border:`1px solid ${rp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                        <div style={{width:36,height:36,borderRadius:10,background:rp.color+"22",border:"1px solid "+rp.color+"44",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
                           {acc.role==="admin"?"👑":"🛡"}
                         </div>
                         <div style={{flex:1}}>
@@ -1012,7 +1086,7 @@ export default function App(){
                 <div style={{textAlign:"center",padding:"20px 0"}}>
                   <div style={{fontSize:36,marginBottom:10}}>🔒</div>
                   <div style={{fontSize:14,fontWeight:700,color:"#EF4444",marginBottom:6}}>Cần đăng nhập để xem thông tin phân quyền</div>
-                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{padding:"10px 24px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{padding:"10px 24px",borderRadius:10,border:"none",background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
                     🔑 Đăng nhập
                   </button>
                 </div>
@@ -1055,7 +1129,7 @@ export default function App(){
                 <button
                   onClick={handleRegister}
                   disabled={regLoading||!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim()}
-                  style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"rgba(255,255,255,0.08)":`linear-gradient(90deg,${C.orange},${C.orange2})`,color:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"#666":"#fff",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"none":"0 4px 16px rgba(255,107,53,0.4)",transition:"all 0.2s"}}>
+                  style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"rgba(255,255,255,0.08)":"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"#666":"#fff",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())?"none":"0 4px 16px rgba(255,107,53,0.4)",transition:"all 0.2s"}}>
                   {regLoading?"⏳ Đang gửi...":"✅ Gửi đăng ký"}
                 </button>
                 <div style={{fontSize:11,color:C.dim,textAlign:"center",marginTop:12}}>Sau khi đăng ký, BTC sẽ xem xét và liên hệ qua email</div>
@@ -1066,7 +1140,7 @@ export default function App(){
                   <div style={{fontSize:48,marginBottom:12}}>🎉</div>
                   <div style={{fontSize:18,fontWeight:800,color:"#4ADE80",marginBottom:8}}>Đăng ký thành công!</div>
                   <div style={{fontSize:13,color:C.muted,marginBottom:20,lineHeight:1.6}}>Cảm ơn bạn đã đăng ký tham gia<br/>BTC sẽ liên hệ qua email trong thời gian sớm nhất</div>
-                  <button onClick={()=>setRegSubmitted(false)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                  <button onClick={()=>setRegSubmitted(false)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
                     📝 Đăng ký thêm
                   </button>
                 </div>
@@ -1087,14 +1161,14 @@ export default function App(){
                         const count=s==="all"?regList.length:regList.filter(r=>r.status===s).length;
                         const colors={all:C.orange,pending:"#FBBF24",approved:"#4ADE80",rejected:"#F87171"};
                         return(
-                          <span key={s} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:`${colors[s]}22`,color:colors[s],border:`1px solid ${colors[s]}44`}}>
+                          <span key={s} style={{padding:"3px 10px",borderRadius:20,fontSize:11,fontWeight:700,background:colors[s]+"22",color:colors[s],border:"1px solid "+colors[s]+"44"}}>
                             {s==="all"?"Tất cả":s==="pending"?"Chờ duyệt":s==="approved"?"Đã duyệt":"Từ chối"} ({count})
                           </span>
                         );
                       })}
                     </div>
                     {regList.map(reg=>(
-                      <div key={reg.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",border:`1px solid ${reg.status==="approved"?"rgba(74,222,128,0.25)":reg.status==="rejected"?"rgba(248,113,113,0.2)":"rgba(255,255,255,0.08)"}`}}>
+                      <div key={reg.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",border:"1px solid "+(reg.status==="approved"?"rgba(74,222,128,0.25)":reg.status==="rejected"?"rgba(248,113,113,0.2)":"rgba(255,255,255,0.08)")}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                           <div style={{flex:1}}>
                             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
@@ -1132,292 +1206,290 @@ export default function App(){
         {tab==="tournament"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
 
-            {/* Header + Create button */}
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-              <div style={{fontSize:18,fontWeight:800,color:C.orange}}>🏅 Quản lý giải đấu</div>
+            {/* ── Header ── */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+              <div style={{fontSize:18,fontWeight:800,color:C.orange}}>🏅 Giải đấu</div>
               {can("canCreateTournament")&&(
-                <button onClick={()=>setShowTourModal(true)} style={{padding:"8px 16px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>
+                <button onClick={()=>setShowTourModal(true)}
+                  style={{padding:"10px 18px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:"#fff",fontWeight:800,fontSize:13,cursor:"pointer",boxShadow:"0 4px 12px rgba(255,107,53,0.35)",display:"flex",alignItems:"center",gap:6}}>
                   + Tạo giải
                 </button>
               )}
             </div>
 
-            {/* Tournament list */}
+            {/* ── Tournament cards ── */}
             {tournaments.length===0?(
-              <Card>
-                <div style={{textAlign:"center",padding:"30px 0",color:C.dim}}>
-                  <div style={{fontSize:36,marginBottom:10}}>🏅</div>
-                  <div style={{fontSize:14}}>Chưa có giải đấu nào</div>
-                  {can("canCreateTournament")&&<div style={{fontSize:12,marginTop:6,color:C.muted}}>Nhấn "+ Tạo giải" để bắt đầu</div>}
-                </div>
+              <Card style={{padding:"40px 16px",textAlign:"center"}}>
+                <div style={{fontSize:48,marginBottom:12}}>🏅</div>
+                <div style={{fontSize:15,fontWeight:700,color:C.muted,marginBottom:6}}>Chưa có giải đấu nào</div>
+                {can("canCreateTournament")&&<div style={{fontSize:12,color:C.dim}}>Nhấn "+ Tạo giải" để bắt đầu</div>}
               </Card>
             ):(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {tournaments.map(tour=>(
-                  <Card key={tour.id}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                      <div style={{flex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                          <span style={{fontWeight:800,fontSize:15,color:C.text}}>{tour.name}</span>
-                          <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontWeight:700,
-                            background:tour.status==="active"?"rgba(74,222,128,0.15)":"rgba(107,114,128,0.2)",
-                            color:tour.status==="active"?"#4ADE80":"#9CA3AF"}}>
-                            {tour.status==="active"?"🟢 Đang diễn ra":"✅ Đã kết thúc"}
+                {tournaments.map(tour=>{
+                  const matchCount=(tour.matches||[]).length;
+                  const confirmed=(tour.matches||[]).filter(m=>m.confirmed).length;
+                  const isActive=tour.status==="active";
+                  return(
+                    <div key={tour.id} style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+(isActive?"rgba(74,222,128,0.2)":C.border),borderRadius:18,overflow:"hidden"}}>
+                      {/* Top strip */}
+                      {isActive&&<div style={{height:3,background:"linear-gradient(90deg,#4ADE80,#22C55E)"}}/>}
+
+                      <div style={{padding:"14px 16px"}}>
+                        {/* Name + status */}
+                        <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:10}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontWeight:800,fontSize:16,color:C.text,lineHeight:1.3}}>{tour.name}</div>
+                            <div style={{fontSize:11,color:C.dim,marginTop:2}}>📅 {tour.date}</div>
+                          </div>
+                          <span style={{fontSize:10,padding:"4px 10px",borderRadius:20,fontWeight:700,flexShrink:0,
+                            background:isActive?"rgba(74,222,128,0.12)":"rgba(107,114,128,0.15)",
+                            color:isActive?"#4ADE80":"#6B7280",border:"1px solid "+(isActive?"rgba(74,222,128,0.25)":"rgba(107,114,128,0.2)")}}>
+                            {isActive?"● Đang diễn ra":"✓ Kết thúc"}
                           </span>
                         </div>
-                        <div style={{fontSize:12,color:C.muted,display:"flex",flexWrap:"wrap",gap:"4px 14px",marginBottom:6}}>
-                          <span>📅 {tour.date}</span>
-                          <span>🎮 {tour.format==="single"?"Đơn":tour.format==="double"?"Đôi":"Đội"}</span>
-                          <span>🔄 {tour.rounds} vòng</span>
-                          <span>⚔️ {(tour.matches||[]).length} trận</span>
+
+                        {/* Stats row */}
+                        <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+                          {[
+                            {icon:"🎮",val:tour.format==="single"?"Đơn":tour.format==="double"?"Đôi":"Đội"},
+                            {icon:"🔄",val:tour.rounds+" vòng"},
+                            {icon:"⚔️",val:matchCount+" trận"},
+                            {icon:"✔",val:confirmed+" xác nhận",color:"#4ADE80"},
+                          ].map(({icon,val,color},i)=>(
+                            <span key={i} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"rgba(255,255,255,0.05)",color:color||C.muted,border:"1px solid rgba(255,255,255,0.07)",fontWeight:600}}>
+                              {icon} {val}
+                            </span>
+                          ))}
+                          {tour.pin&&isAdmin&&(
+                            <span style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"rgba(96,165,250,0.1)",color:"#60A5FA",border:"1px solid rgba(96,165,250,0.2)",fontWeight:700}}>
+                              🔑 PIN: {tour.pin}
+                            </span>
+                          )}
                         </div>
-                        {tour.note&&<div style={{fontSize:11,color:C.dim,fontStyle:"italic"}}>📝 {tour.note}</div>}
-                      </div>
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        <button onClick={()=>setViewTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(96,165,250,0.15)",color:"#60A5FA",fontWeight:700,cursor:"pointer",fontSize:12}}>👁 Xem</button>
-                        {can("canManageTournament")&&tour.status==="active"&&(
-                          <>
-                            <button onClick={()=>{setActiveTour(tour);setShowMatchModal(true);}} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(255,107,53,0.15)",color:C.orange,fontWeight:700,cursor:"pointer",fontSize:12}}>+ Trận</button>
-                            <button onClick={()=>handleEndTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(74,222,128,0.1)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12}}>🏁 Kết thúc</button>
-                          </>
+
+                        {tour.note&&<div style={{fontSize:11,color:C.dim,marginBottom:10,fontStyle:"italic"}}>📝 {tour.note}</div>}
+
+                        {/* Action buttons */}
+                        <div style={{display:"flex",gap:8}}>
+                          <button onClick={()=>setViewTour(tour)}
+                            style={{flex:1,padding:"10px 0",borderRadius:12,border:"1px solid rgba(96,165,250,0.3)",background:"rgba(96,165,250,0.08)",color:"#60A5FA",fontWeight:700,cursor:"pointer",fontSize:13}}>
+                            👁 Xem chi tiết
+                          </button>
+                          {can("canManageTournament")&&isActive&&(
+                            <button onClick={()=>{setActiveTour(tour);setShowMatchModal(true);}}
+                              style={{flex:1,padding:"10px 0",borderRadius:12,border:"none",background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:"#fff",fontWeight:700,cursor:"pointer",fontSize:13,boxShadow:"0 3px 10px rgba(255,107,53,0.3)"}}>
+                              + Thêm trận
+                            </button>
+                          )}
+                        </div>
+
+                        {/* End/Delete row */}
+                        {(can("canManageTournament")&&isActive||can("canDeletePlayers"))&&(
+                          <div style={{display:"flex",gap:8,marginTop:8}}>
+                            {can("canManageTournament")&&isActive&&(
+                              <button onClick={()=>handleEndTour(tour)}
+                                style={{flex:1,padding:"9px 0",borderRadius:12,border:"1px solid rgba(74,222,128,0.25)",background:"rgba(74,222,128,0.06)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12}}>
+                                🏁 Kết thúc giải
+                              </button>
+                            )}
+                            {can("canDeletePlayers")&&(
+                              <button onClick={()=>handleDeleteTour(tour)}
+                                style={{padding:"9px 14px",borderRadius:12,border:"1px solid rgba(239,68,68,0.25)",background:"rgba(239,68,68,0.06)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:13}}>
+                                🗑
+                              </button>
+                            )}
+                          </div>
                         )}
-                        {can("canDeletePlayers")&&<button onClick={()=>handleDeleteTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(239,68,68,0.1)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12}}>🗑</button>}
                       </div>
                     </div>
-                  </Card>
-                ))}
+                  );
+                })}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ════ TOUR REGISTRATION SECTION ════ */}
+        {tab==="tournament"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
 
             {/* ── Public Registration Form ── */}
-            <Card>
-              <SectionTitle>📋 Đăng ký tham gia giải</SectionTitle>
+            <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+C.border,borderRadius:18,overflow:"hidden"}}>
+              <div style={{padding:"14px 16px 0"}}>
+                <div style={{fontSize:14,fontWeight:800,color:C.orange,marginBottom:2}}>📋 Đăng ký tham gia giải</div>
+                <div style={{fontSize:11,color:C.dim,marginBottom:12}}>Điền thông tin để đăng ký — Ban tổ chức sẽ duyệt đơn</div>
+              </div>
               {tournaments.filter(t=>t.status==="active").length===0?(
-                <div style={{textAlign:"center",color:C.dim,padding:"16px 0",fontSize:13}}>Hiện chưa có giải đấu nào đang mở đăng ký</div>
+                <div style={{textAlign:"center",color:C.dim,padding:"20px 16px 20px",fontSize:13}}>Hiện chưa có giải đấu nào đang mở đăng ký</div>
               ):!tourRegSubmitted?(
-                <div>
-                  {[
-                    {label:"Chọn giải đấu *", node:(
-                      <select value={tourRegForm.tourId} onChange={e=>setTourRegForm(f=>({...f,tourId:e.target.value}))} style={MS}>
-                        <option value="">-- Chọn giải --</option>
-                        {tournaments.filter(t=>t.status==="active").map(t=>(
-                          <option key={t.id} value={t.id}>{t.name} ({t.date})</option>
-                        ))}
-                      </select>
-                    )},
-                    {label:"Tên VĐV *", node:(
-                      <select value={tourRegForm.playerName} onChange={e=>setTourRegForm(f=>({...f,playerName:e.target.value}))} style={MS}>
-                        <option value="">-- Chọn VĐV --</option>
-                        {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
-                          <option key={p.id} value={p.name}>{p.gender==="male"?"👨":"👩"} {p.name} | Tier {p.tier}</option>
-                        ))}
-                      </select>
-                    )},
-                    {label:"Email / SĐT liên hệ *", node:<input value={tourRegForm.contact} onChange={e=>setTourRegForm(f=>({...f,contact:e.target.value}))} style={MS} placeholder="Email hoặc số điện thoại..."/>},
-                    {label:"Nội dung thi đấu", node:(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {[["single","🎯 Đơn"],["double","👫 Đôi"],["mixed","🔀 Hỗn hợp"]].map(([v,l])=>(
-                          <button key={v} onClick={()=>setTourRegForm(f=>({...f,content:v}))} style={{flex:1,minWidth:80,padding:"10px 6px",borderRadius:10,border:"1px solid",borderColor:tourRegForm.content===v?C.orange:"rgba(255,255,255,0.1)",background:tourRegForm.content===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:tourRegForm.content===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:12}}>{l}</button>
-                        ))}
-                      </div>
-                    )},
-                    {label:"Đối tác đánh đôi (nếu có)", node:(
-                      <select value={tourRegForm.partner} onChange={e=>setTourRegForm(f=>({...f,partner:e.target.value}))} style={MS}>
-                        <option value="">-- Chưa có / chưa xác định --</option>
-                        {[...players.male,...players.female].filter(p=>p.name!==tourRegForm.playerName).sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
-                          <option key={p.id} value={p.name}>{p.gender==="male"?"👨":"👩"} {p.name} | Tier {p.tier}</option>
-                        ))}
-                      </select>
-                    )},
-                    {label:"Ghi chú / Yêu cầu đặc biệt", node:<input value={tourRegForm.note} onChange={e=>setTourRegForm(f=>({...f,note:e.target.value}))} style={MS} placeholder="Yêu cầu lịch đấu, thông tin thêm..."/>},
-                  ].map(({label,node},i)=>(
-                    <div key={i} style={{marginBottom:12}}>
-                      <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:6,textTransform:"uppercase"}}>{label}</label>
-                      {node}
+                <div style={{padding:"0 16px 16px",display:"flex",flexDirection:"column",gap:10}}>
+                  {/* Chọn giải */}
+                  <div>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Chọn giải đấu *</label>
+                    <select value={tourRegForm.tourId} onChange={e=>setTourRegForm(f=>({...f,tourId:e.target.value}))} style={MS}>
+                      <option value="">-- Chọn giải --</option>
+                      {tournaments.filter(t=>t.status==="active").map(t=>(
+                        <option key={t.id} value={t.id}>{t.name} ({t.date})</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Tên VĐV */}
+                  <div>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên vận động viên *</label>
+                    <select value={tourRegForm.playerName} onChange={e=>setTourRegForm(f=>({...f,playerName:e.target.value}))} style={MS}>
+                      <option value="">-- Chọn VĐV --</option>
+                      {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                        <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | Tier {p.tier}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Nội dung */}
+                  <div>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:6,textTransform:"uppercase"}}>Nội dung tham dự *</label>
+                    <div style={{display:"flex",gap:6}}>
+                      {[["single","🎯 Đơn"],["double","👫 Đôi"],["mixed","🔀 Hỗn hợp"]].map(([v,l])=>(
+                        <button key={v} onClick={()=>setTourRegForm(f=>({...f,content:v}))}
+                          style={{flex:1,padding:"10px 4px",borderRadius:10,border:"1px solid",
+                            borderColor:tourRegForm.content===v?C.orange:"rgba(255,255,255,0.1)",
+                            background:tourRegForm.content===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",
+                            color:tourRegForm.content===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:11}}>
+                          {l}
+                        </button>
+                      ))}
                     </div>
-                  ))}
-                  <button
-                    onClick={handleTourRegister}
-                    disabled={!tourRegForm.tourId||!tourRegForm.playerName||!tourRegForm.contact}
-                    style={{width:"100%",padding:"13px",borderRadius:12,border:"none",
-                      background:(!tourRegForm.tourId||!tourRegForm.playerName||!tourRegForm.contact)?"rgba(255,255,255,0.08)":`linear-gradient(90deg,${C.orange},${C.orange2})`,
-                      color:(!tourRegForm.tourId||!tourRegForm.playerName||!tourRegForm.contact)?"#666":"#fff",
-                      fontWeight:800,fontSize:15,cursor:"pointer",
-                      boxShadow:(!tourRegForm.tourId||!tourRegForm.playerName||!tourRegForm.contact)?"none":"0 4px 16px rgba(255,107,53,0.4)"}}>
-                    📋 Xác nhận đăng ký
-                  </button>
+                  </div>
+                  {/* Đối tác (nếu đôi) */}
+                  {(tourRegForm.content==="double"||tourRegForm.content==="mixed")&&(
+                    <div>
+                      <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên đối tác (đôi)</label>
+                      <input value={tourRegForm.partner} onChange={e=>setTourRegForm(f=>({...f,partner:e.target.value}))} style={MS} placeholder="Tên VĐV đối tác..."/>
+                    </div>
+                  )}
+                  {/* Liên hệ */}
+                  <div>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Số điện thoại / Zalo</label>
+                    <input value={tourRegForm.contact} onChange={e=>setTourRegForm(f=>({...f,contact:e.target.value}))} style={MS} placeholder="0901 234 567"/>
+                  </div>
+                  {/* Ghi chú */}
+                  <div>
+                    <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Ghi chú (tuỳ chọn)</label>
+                    <input value={tourRegForm.note} onChange={e=>setTourRegForm(f=>({...f,note:e.target.value}))} style={MS} placeholder="Thông tin thêm..."/>
+                  </div>
+                  {/* Submit */}
+                  {(()=>{
+                    const ok=tourRegForm.tourId&&tourRegForm.playerName;
+                    return(
+                      <button onClick={handleTourRegister} disabled={!ok}
+                        style={{padding:"14px",borderRadius:12,border:"none",marginTop:4,
+                          background:ok?"linear-gradient(90deg,#FF6B35,#FF8C5A)":"rgba(255,255,255,0.06)",
+                          color:ok?"#fff":"#4B5563",fontWeight:800,fontSize:14,cursor:ok?"pointer":"default",
+                          boxShadow:ok?"0 4px 14px rgba(255,107,53,0.35)":"none"}}>
+                        📋 Gửi đơn đăng ký
+                      </button>
+                    );
+                  })()}
                 </div>
               ):(
-                <div style={{textAlign:"center",padding:"16px 0"}}>
-                  <div style={{fontSize:42,marginBottom:10}}>🎉</div>
-                  <div style={{fontSize:16,fontWeight:800,color:"#4ADE80",marginBottom:6}}>Đăng ký thành công!</div>
-                  <div style={{fontSize:13,color:C.muted,marginBottom:16}}>BTC sẽ xem xét và thông báo kết quả sớm nhất</div>
-                  <button onClick={()=>setTourRegSubmitted(false)} style={{padding:"10px 24px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
-                    📋 Đăng ký thêm
+                <div style={{textAlign:"center",padding:"24px 16px 20px"}}>
+                  <div style={{fontSize:40,marginBottom:10}}>✅</div>
+                  <div style={{fontSize:15,fontWeight:700,color:"#4ADE80",marginBottom:6}}>Đã gửi đơn thành công!</div>
+                  <div style={{fontSize:12,color:C.dim,marginBottom:16}}>Ban tổ chức sẽ xem xét và thông báo kết quả</div>
+                  <button onClick={()=>{setTourRegSubmitted(false);setTourRegForm({tourId:"",playerName:"",contact:"",content:"single",partner:"",note:""});}}
+                    style={{padding:"10px 24px",borderRadius:10,border:"1px solid rgba(255,107,53,0.3)",background:"rgba(255,107,53,0.08)",color:C.orange,fontWeight:700,cursor:"pointer",fontSize:13}}>
+                    Đăng ký thêm
                   </button>
                 </div>
               )}
-            </Card>
+            </div>
 
-            {/* ── Admin: manage registrations per tournament ── */}
-            {can("canApproveReg")&&tournaments.length>0&&(
-              <Card>
-                <SectionTitle>👑 Quản lý đăng ký (Admin)</SectionTitle>
-                <div style={{marginBottom:12}}>
-                  <select onChange={e=>{const t=tournaments.find(x=>String(x.id)===e.target.value);setShowTourRegAdmin(t||null);}} style={MS}>
-                    <option value="">-- Chọn giải để xem đăng ký --</option>
-                    {tournaments.map(t=>{
-                      const pending=(t.tourRegs||[]).filter(r=>r.status==="pending").length;
-                      return <option key={t.id} value={t.id}>{t.name}{pending>0?` (⏳${pending} chờ duyệt)`:""}</option>;
-                    })}
-                  </select>
+            {/* ── Admin/Mod: Registration Management ── */}
+            {can("canManageTournament")&&(
+              <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:18,overflow:"hidden"}}>
+                <div style={{padding:"14px 16px 0",marginBottom:10}}>
+                  <div style={{fontSize:14,fontWeight:800,color:"#60A5FA"}}>👥 Quản lý đơn đăng ký</div>
+                  <div style={{fontSize:11,color:C.dim,marginTop:2}}>Duyệt hoặc từ chối đơn đăng ký của VĐV</div>
                 </div>
-                {showTourRegAdmin&&(()=>{
-                  const regs = showTourRegAdmin.tourRegs||[];
-                  const pending=regs.filter(r=>r.status==="pending");
-                  const approved=regs.filter(r=>r.status==="approved");
-                  const rejected=regs.filter(r=>r.status==="rejected");
-                  return(
-                    <div>
-                      {/* Summary badges */}
-                      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-                        {[{label:"Tất cả",count:regs.length,color:C.orange},{label:"Chờ duyệt",count:pending.length,color:"#FBBF24"},{label:"Đã duyệt",count:approved.length,color:"#4ADE80"},{label:"Từ chối",count:rejected.length,color:"#F87171"}].map(({label,count,color},i)=>(
-                          <span key={i} style={{padding:"4px 12px",borderRadius:20,fontSize:11,fontWeight:700,background:`${color}22`,color,border:`1px solid ${color}44`}}>{label}: {count}</span>
-                        ))}
-                      </div>
-                      {regs.length===0?(
-                        <div style={{textAlign:"center",color:C.dim,padding:"16px 0",fontSize:13}}>Chưa có đơn đăng ký nào</div>
-                      ):(
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                          {regs.map(reg=>(
-                            <div key={reg.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"12px 14px",border:`1px solid ${reg.status==="approved"?"rgba(74,222,128,0.25)":reg.status==="rejected"?"rgba(248,113,113,0.2)":"rgba(255,255,255,0.08)"}`}}>
-                              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                                <div style={{flex:1}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
-                                    <span style={{fontWeight:800,fontSize:14,color:C.text}}>{reg.playerName}</span>
-                                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontWeight:700,
-                                      background:reg.status==="approved"?"rgba(74,222,128,0.15)":reg.status==="rejected"?"rgba(248,113,113,0.15)":"rgba(251,191,36,0.15)",
-                                      color:reg.status==="approved"?"#4ADE80":reg.status==="rejected"?"#F87171":"#FBBF24"}}>
-                                      {reg.status==="approved"?"✅ Đã duyệt":reg.status==="rejected"?"❌ Từ chối":"⏳ Chờ duyệt"}
-                                    </span>
-                                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:"rgba(96,165,250,0.12)",color:"#60A5FA",fontWeight:600}}>
-                                      {reg.content==="single"?"🎯 Đơn":reg.content==="double"?"👫 Đôi":"🔀 Hỗn hợp"}
-                                    </span>
-                                  </div>
-                                  <div style={{fontSize:12,color:C.muted,display:"flex",flexWrap:"wrap",gap:"3px 14px"}}>
-                                    <span>📞 {reg.contact}</span>
-                                    {reg.partner&&<span>👫 Đối tác: <span style={{color:C.text,fontWeight:600}}>{reg.partner}</span></span>}
-                                    {reg.note&&<span>💬 {reg.note}</span>}
-                                  </div>
-                                  <div style={{fontSize:10,color:C.dim,marginTop:4}}>🕐 {reg.time}</div>
-                                </div>
-                                {reg.status==="pending"&&(
-                                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                    <button onClick={()=>handleTourRegApprove(showTourRegAdmin,reg.id)} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"rgba(74,222,128,0.2)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>✅ Duyệt</button>
-                                    <button onClick={()=>handleTourRegReject(showTourRegAdmin,reg.id)} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"rgba(248,113,113,0.15)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12,whiteSpace:"nowrap"}}>❌ Từ chối</button>
-                                  </div>
-                                )}
+                {tournaments.length===0?(
+                  <div style={{textAlign:"center",color:C.dim,padding:"16px",fontSize:12}}>Chưa có giải đấu nào</div>
+                ):(
+                  <div style={{padding:"0 16px 16px",display:"flex",flexDirection:"column",gap:12}}>
+                    {tournaments.map(tour=>{
+                      const regs=tour.tourRegs||[];
+                      const pending=regs.filter(r=>r.status==="pending");
+                      const approved=regs.filter(r=>r.status==="approved");
+                      const rejected=regs.filter(r=>r.status==="rejected");
+                      return(
+                        <div key={tour.id} style={{borderRadius:12,border:"1px solid rgba(255,255,255,0.07)",overflow:"hidden"}}>
+                          {/* Tour header */}
+                          <div style={{padding:"10px 12px",background:"rgba(255,255,255,0.03)",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer"}}
+                            onClick={()=>setShowTourRegAdmin(showTourRegAdmin?.id===tour.id?null:tour)}>
+                            <div>
+                              <div style={{fontSize:13,fontWeight:700,color:C.text}}>{tour.name}</div>
+                              <div style={{fontSize:11,color:C.dim,marginTop:2,display:"flex",gap:8}}>
+                                <span style={{color:"#FBBF24",fontWeight:600}}>{pending.length} chờ duyệt</span>
+                                <span style={{color:"#4ADE80"}}>{approved.length} đã duyệt</span>
+                                <span style={{color:"#F87171"}}>{rejected.length} từ chối</span>
                               </div>
                             </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </Card>
-            )}
-
-            {/* Player history lookup */}
-            <Card>
-              <SectionTitle>📊 Lịch sử thi đấu VĐV</SectionTitle>
-              <div style={{display:"flex",gap:8,marginBottom:12}}>
-                <select onChange={e=>{const p=allPlayers.find(x=>x.name===e.target.value);setPlayerHistoryView(p||null);}} style={{...MS,flex:1}}>
-                  <option value="">-- Chọn VĐV --</option>
-                  {[...players.male,...players.female].sort((a,b)=>b.boom-a.boom).map(p=>(
-                    <option key={p.id} value={p.name}>{p.gender==="male"?"👨":"👩"} {p.name} ({p.tier})</option>
-                  ))}
-                </select>
-              </div>
-              {playerHistoryView&&(()=>{
-                const stats = getPlayerStats(playerHistoryView.name);
-                const winRate = stats.totalMatches>0?Math.round(stats.wins/stats.totalMatches*100):0;
-                const playerMatches = [];
-                tournaments.forEach(tour=>{
-                  (tour.matches||[]).forEach(m=>{
-                    const inT1=m.team1.includes(playerHistoryView.name);
-                    const inT2=m.team2.includes(playerHistoryView.name);
-                    if(inT1||inT2) playerMatches.push({...m,tourName:tour.name,isT1:inT1});
-                  });
-                });
-                return(
-                  <div>
-                    {/* Stats summary */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:14}}>
-                      {[
-                        {label:"Tổng trận",val:stats.totalMatches,color:C.orange},
-                        {label:"Thắng",val:stats.wins,color:"#4ADE80"},
-                        {label:"Thua",val:stats.losses,color:"#F87171"},
-                        {label:"Tỉ lệ thắng",val:winRate+"%",color:"#FBBF24"},
-                      ].map(({label,val,color},i)=>(
-                        <div key={i} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 8px",textAlign:"center",border:`1px solid ${color}22`}}>
-                          <div style={{fontSize:16,fontWeight:800,color}}>{val}</div>
-                          <div style={{fontSize:9,color:C.dim,marginTop:2}}>{label}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* Tournaments participated */}
-                    {stats.tourList.length>0&&(
-                      <div style={{marginBottom:12}}>
-                        <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:6}}>🏅 GIẢI ĐÃ THAM GIA</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                          {stats.tourList.map((t,i)=>(
-                            <span key={i} style={{fontSize:11,padding:"3px 10px",borderRadius:20,background:"rgba(255,107,53,0.12)",color:C.orange,border:"1px solid rgba(255,107,53,0.25)"}}>{t}</span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {/* Match history */}
-                    {playerMatches.length>0&&(
-                      <div>
-                        <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:6}}>⚔️ LỊCH SỬ TRẬN ĐẤU</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          {playerMatches.map((m,i)=>{
-                            const won=(m.isT1&&m.score1>m.score2)||(!m.isT1&&m.score2>m.score1);
-                            const myTeam=m.isT1?m.team1:m.team2;
-                            const oppTeam=m.isT1?m.team2:m.team1;
-                            const myScore=m.isT1?m.score1:m.score2;
-                            const oppScore=m.isT1?m.score2:m.score1;
-                            return(
-                              <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px",border:`1px solid ${won?"rgba(74,222,128,0.2)":"rgba(248,113,113,0.15)"}`}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                                  <span style={{fontSize:10,color:C.dim}}>{m.tourName} • Vòng {m.round}</span>
-                                  <span style={{fontSize:11,fontWeight:800,color:won?"#4ADE80":"#F87171"}}>{won?"🏆 THẮNG":"❌ THUA"}</span>
+                            <span style={{color:C.dim,fontSize:16}}>{showTourRegAdmin?.id===tour.id?"▲":"▼"}</span>
+                          </div>
+                          {/* Reg list */}
+                          {showTourRegAdmin?.id===tour.id&&(
+                            <div style={{padding:"8px 12px 12px",display:"flex",flexDirection:"column",gap:8}}>
+                              {regs.length===0?(
+                                <div style={{textAlign:"center",color:C.dim,padding:"12px 0",fontSize:12}}>Chưa có đơn đăng ký nào</div>
+                              ):regs.map((reg,ri)=>(
+                                <div key={reg.id||ri} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 12px",
+                                  border:"1px solid "+(reg.status==="approved"?"rgba(74,222,128,0.25)":reg.status==="rejected"?"rgba(248,113,113,0.25)":"rgba(251,191,36,0.2)")}}>
+                                  {/* Status badge + name */}
+                                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                                    <div style={{fontWeight:700,fontSize:13,color:C.text}}>{reg.playerName}</div>
+                                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:20,fontWeight:700,
+                                      background:reg.status==="approved"?"rgba(74,222,128,0.12)":reg.status==="rejected"?"rgba(248,113,113,0.12)":"rgba(251,191,36,0.12)",
+                                      color:reg.status==="approved"?"#4ADE80":reg.status==="rejected"?"#F87171":"#FBBF24"}}>
+                                      {reg.status==="approved"?"✓ Đã duyệt":reg.status==="rejected"?"✗ Từ chối":"⏳ Chờ duyệt"}
+                                    </span>
+                                  </div>
+                                  {/* Details */}
+                                  <div style={{fontSize:11,color:C.dim,display:"flex",flexWrap:"wrap",gap:"2px 12px",marginBottom:reg.status==="pending"?8:0}}>
+                                    <span>🎯 {reg.content==="single"?"Đơn":reg.content==="double"?"Đôi":"Hỗn hợp"}</span>
+                                    {reg.partner&&<span>👫 {reg.partner}</span>}
+                                    {reg.contact&&<span>📞 {reg.contact}</span>}
+                                    {reg.note&&<span>📝 {reg.note}</span>}
+                                    <span style={{color:C.dim}}>🕐 {reg.time}</span>
+                                  </div>
+                                  {/* Action buttons - only for pending */}
+                                  {reg.status==="pending"&&(
+                                    <div style={{display:"flex",gap:8,marginTop:8}}>
+                                      <button onClick={()=>handleTourRegApprove(tour,reg.id)}
+                                        style={{flex:1,padding:"9px 0",borderRadius:10,border:"none",background:"rgba(74,222,128,0.15)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12}}>
+                                        ✓ Duyệt
+                                      </button>
+                                      <button onClick={()=>handleTourRegReject(tour,reg.id)}
+                                        style={{flex:1,padding:"9px 0",borderRadius:10,border:"none",background:"rgba(248,113,113,0.12)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12}}>
+                                        ✗ Từ chối
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
-                                <div style={{display:"flex",alignItems:"center",gap:8,fontSize:12}}>
-                                  <span style={{color:C.text,fontWeight:600}}>{myTeam.join(" & ")}</span>
-                                  <span style={{fontWeight:800,color:C.orange,padding:"2px 8px",background:"rgba(255,107,53,0.12)",borderRadius:6}}>{myScore} - {oppScore}</span>
-                                  <span style={{color:C.muted}}>vs {oppTeam.join(" & ")}</span>
-                                </div>
-                                <div style={{fontSize:10,color:C.dim,marginTop:3}}>🕐 {m.time}</div>
-                              </div>
-                            );
-                          })}
+                              ))}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    )}
-                    {playerMatches.length===0&&<div style={{textAlign:"center",color:C.dim,fontSize:13,padding:"10px 0"}}>Chưa có trận nào được ghi nhận</div>}
+                      );
+                    })}
                   </div>
-                );
-              })()}
-            </Card>
+                )}
+              </div>
+            )}
           </div>
         )}
 
         {/* ════ CREATE TOURNAMENT MODAL ════ */}
         {showTourModal&&can("canCreateTournament")&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowTourModal(false)}>
-            <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(255,107,53,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
               <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
               <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:18}}>🏅 Tạo giải đấu mới</div>
               {[
@@ -1431,6 +1503,14 @@ export default function App(){
                   </div>
                 )},
                 {label:"Số vòng đấu",node:<input value={tourForm.rounds} onChange={e=>setTourForm(f=>({...f,rounds:e.target.value}))} style={MS} type="number" min="1" placeholder="1"/>},
+                {label:"Best of (số game/trận)",node:(
+                  <div style={{display:"flex",gap:6}}>
+                    {[["1","Bo1"],["3","Bo3"],["5","Bo5"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setTourForm(f=>({...f,bestOf:v}))} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid",borderColor:tourForm.bestOf===v?C.orange:"rgba(255,255,255,0.1)",background:tourForm.bestOf===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:tourForm.bestOf===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:13}}>{l}</button>
+                    ))}
+                  </div>
+                )},
+                {label:"Mã PIN trọng tài (để trống = tự động tạo)",node:<input value={tourForm.pin} onChange={e=>setTourForm(f=>({...f,pin:e.target.value.split("").filter(c=>c>="0"&&c<="9").join("").slice(0,6)}))} style={MS} placeholder="VD: 1234 (tự động nếu để trống)" maxLength={6}/>},
                 {label:"Ghi chú (tuỳ chọn)",node:<input value={tourForm.note} onChange={e=>setTourForm(f=>({...f,note:e.target.value}))} style={MS} placeholder="Địa điểm, thông tin thêm..."/>},
               ].map(({label,node},i)=>(
                 <div key={i} style={{marginBottom:12}}>
@@ -1440,7 +1520,7 @@ export default function App(){
               ))}
               <div style={{display:"flex",gap:10,marginTop:18}}>
                 <button onClick={()=>setShowTourModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
-                <button onClick={handleCreateTour} disabled={!tourForm.name.trim()||!tourForm.date} style={{flex:2,background:(!tourForm.name.trim()||!tourForm.date)?"rgba(255,255,255,0.08)":`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:(!tourForm.name.trim()||!tourForm.date)?"#666":"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800}}>🏅 Tạo giải</button>
+                <button onClick={handleCreateTour} disabled={!tourForm.name.trim()||!tourForm.date} style={{flex:2,background:(!tourForm.name.trim()||!tourForm.date)?"rgba(255,255,255,0.08)":"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:(!tourForm.name.trim()||!tourForm.date)?"#666":"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800}}>🏅 Tạo giải</button>
               </div>
             </div>
           </div>
@@ -1448,114 +1528,198 @@ export default function App(){
 
         {/* ════ ADD MATCH MODAL ════ */}
         {showMatchModal&&activeTour&&can("canManageTournament")&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowMatchModal(false)}>
-            <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(96,165,250,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
-              <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
-              <div style={{fontSize:16,fontWeight:800,color:"#60A5FA",marginBottom:4}}>⚔️ Thêm kết quả trận đấu</div>
-              <div style={{fontSize:12,color:C.muted,marginBottom:16}}>Giải: {activeTour.name}</div>
-              <div style={{marginBottom:12}}>
-                <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Vòng đấu</label>
-                <input value={matchForm.round} onChange={e=>setMatchForm(f=>({...f,round:e.target.value}))} style={MS} type="number" min="1" placeholder="1"/>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",flexDirection:"column",zIndex:400,backdropFilter:"blur(6px)"}}>
+            {/* Header */}
+            <div style={{background:"linear-gradient(145deg,#181818,#222)",borderBottom:"1px solid rgba(96,165,250,0.2)",padding:"14px 16px",flexShrink:0,display:"flex",alignItems:"center",gap:12}}>
+              <button onClick={()=>setShowMatchModal(false)} style={{background:"rgba(255,255,255,0.08)",border:"none",color:C.muted,borderRadius:10,padding:"8px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}>← Hủy</button>
+              <div>
+                <div style={{fontSize:15,fontWeight:800,color:"#60A5FA"}}>⚔️ Thêm kết quả trận</div>
+                <div style={{fontSize:11,color:C.dim}}>{activeTour.name}</div>
               </div>
-              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",marginBottom:12}}>
-                <div style={{fontSize:11,color:C.orange,fontWeight:700,marginBottom:8}}>🔴 ĐỘI 1</div>
-                <select value={matchForm.p1} onChange={e=>setMatchForm(f=>({...f,p1:e.target.value}))} style={{...MS,marginBottom:8}}>
-                  <option value="">-- VĐV 1 --</option>
-                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+            </div>
+
+            {/* Body */}
+            <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
+
+              {/* Round */}
+              <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
+                <span style={{fontSize:13,color:C.muted,fontWeight:600}}>Vòng đấu:</span>
+                <input value={matchForm.round} onChange={e=>setMatchForm(f=>({...f,round:e.target.value}))}
+                  style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:8,padding:"8px 12px",color:C.text,fontSize:15,fontWeight:700,outline:"none",width:60}}
+                  type="number" min="1"/>
+              </div>
+
+              {/* Score input - big and touch-friendly */}
+              <div style={{background:"rgba(255,107,53,0.05)",borderRadius:16,padding:"16px",border:"1px solid rgba(255,107,53,0.15)"}}>
+                <div style={{fontSize:11,color:C.orange,fontWeight:800,marginBottom:12,textAlign:"center",letterSpacing:1}}>TỈ SỐ TRẬN</div>
+                <div style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{flex:1,textAlign:"center"}}>
+                    <div style={{fontSize:10,color:C.orange,fontWeight:700,marginBottom:6}}>🔴 ĐỘI 1</div>
+                    <input value={matchForm.score1} onChange={e=>setMatchForm(f=>({...f,score1:e.target.value}))}
+                      style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"2px solid rgba(255,107,53,0.4)",borderRadius:14,padding:"16px 8px",color:"#FF6B35",fontSize:36,fontWeight:900,textAlign:"center",outline:"none",boxSizing:"border-box"}}
+                      type="number" min="0" inputMode="numeric"/>
+                  </div>
+                  <div style={{fontSize:22,fontWeight:900,color:C.muted,flexShrink:0}}>–</div>
+                  <div style={{flex:1,textAlign:"center"}}>
+                    <div style={{fontSize:10,color:"#60A5FA",fontWeight:700,marginBottom:6}}>🔵 ĐỘI 2</div>
+                    <input value={matchForm.score2} onChange={e=>setMatchForm(f=>({...f,score2:e.target.value}))}
+                      style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"2px solid rgba(96,165,250,0.4)",borderRadius:14,padding:"16px 8px",color:"#60A5FA",fontSize:36,fontWeight:900,textAlign:"center",outline:"none",boxSizing:"border-box"}}
+                      type="number" min="0" inputMode="numeric"/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Team 1 */}
+              <div style={{background:"rgba(255,107,53,0.04)",borderRadius:14,padding:"14px",border:"1px solid rgba(255,107,53,0.12)"}}>
+                <div style={{fontSize:12,color:C.orange,fontWeight:800,marginBottom:10}}>🔴 ĐỘI 1</div>
+                <select value={matchForm.p1} onChange={e=>setMatchForm(f=>({...f,p1:e.target.value}))} style={{...MS,marginBottom:10}}>
+                  <option value="">-- Chọn VĐV --</option>
+                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                    <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
+                  ))}
                 </select>
                 {activeTour.format==="double"&&(
                   <select value={matchForm.p2} onChange={e=>setMatchForm(f=>({...f,p2:e.target.value}))} style={MS}>
                     <option value="">-- VĐV 2 (đôi) --</option>
-                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                      <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
+                    ))}
                   </select>
                 )}
               </div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12,marginBottom:12}}>
-                <input value={matchForm.score1} onChange={e=>setMatchForm(f=>({...f,score1:e.target.value}))} style={{...MS,width:70,textAlign:"center",fontSize:20,fontWeight:800,padding:"10px 8px"}} type="number" min="0" placeholder="0"/>
-                <span style={{fontSize:18,fontWeight:800,color:C.muted}}>–</span>
-                <input value={matchForm.score2} onChange={e=>setMatchForm(f=>({...f,score2:e.target.value}))} style={{...MS,width:70,textAlign:"center",fontSize:20,fontWeight:800,padding:"10px 8px"}} type="number" min="0" placeholder="0"/>
-              </div>
-              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px",marginBottom:16}}>
-                <div style={{fontSize:11,color:"#60A5FA",fontWeight:700,marginBottom:8}}>🔵 ĐỘI 2</div>
-                <select value={matchForm.p3} onChange={e=>setMatchForm(f=>({...f,p3:e.target.value}))} style={{...MS,marginBottom:8}}>
-                  <option value="">-- VĐV 1 --</option>
-                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+
+              {/* Team 2 */}
+              <div style={{background:"rgba(96,165,250,0.04)",borderRadius:14,padding:"14px",border:"1px solid rgba(96,165,250,0.12)"}}>
+                <div style={{fontSize:12,color:"#60A5FA",fontWeight:800,marginBottom:10}}>🔵 ĐỘI 2</div>
+                <select value={matchForm.p3} onChange={e=>setMatchForm(f=>({...f,p3:e.target.value}))} style={{...MS,marginBottom:10}}>
+                  <option value="">-- Chọn VĐV --</option>
+                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                    <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
+                  ))}
                 </select>
                 {activeTour.format==="double"&&(
                   <select value={matchForm.p4} onChange={e=>setMatchForm(f=>({...f,p4:e.target.value}))} style={MS}>
                     <option value="">-- VĐV 2 (đôi) --</option>
-                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name)).map(p=><option key={p.id} value={p.name}>{p.name}</option>)}
+                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                      <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
+                    ))}
                   </select>
                 )}
               </div>
-              <div style={{display:"flex",gap:10}}>
-                <button onClick={()=>setShowMatchModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
-                <button onClick={handleAddMatch} disabled={!matchForm.p1||!matchForm.p3||!matchForm.score1||!matchForm.score2} style={{flex:2,background:(!matchForm.p1||!matchForm.p3)?"rgba(255,255,255,0.08)":`linear-gradient(90deg,#60A5FA,#3B82F6)`,border:"none",color:(!matchForm.p1||!matchForm.p3)?"#666":"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800}}>⚔️ Lưu kết quả</button>
-              </div>
+
+              {/* Save button */}
+              {(()=>{
+                const ok=matchForm.p1&&matchForm.p3&&(matchForm.score1!==""||matchForm.score2!=="");
+                return(
+                  <button onClick={handleAddMatch} disabled={!ok}
+                    style={{padding:"16px",borderRadius:14,border:"none",
+                      background:ok?"linear-gradient(90deg,#60A5FA,#3B82F6)":"rgba(255,255,255,0.06)",
+                      color:ok?"#fff":"#4B5563",fontWeight:800,fontSize:16,cursor:ok?"pointer":"default",
+                      boxShadow:ok?"0 4px 16px rgba(96,165,250,0.35)":"none"}}>
+                    ✔ Lưu kết quả trận
+                  </button>
+                );
+              })()}
             </div>
           </div>
         )}
 
         {/* ════ VIEW TOURNAMENT DETAIL MODAL ════ */}
         {viewTour&&(
-          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(8px)"}} onClick={()=>setViewTour(null)}>
-            <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(255,180,71,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 40px",width:"100%",maxWidth:560,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
-              <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 16px"}}/>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16}}>
-                <div>
-                  <div style={{fontSize:17,fontWeight:800,color:"#FFB347",marginBottom:4}}>{viewTour.name}</div>
-                  <div style={{fontSize:12,color:C.muted,display:"flex",gap:10,flexWrap:"wrap"}}>
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",flexDirection:"column",zIndex:400,backdropFilter:"blur(8px)"}}>
+            {/* Fixed header */}
+            <div style={{background:"linear-gradient(145deg,#181818,#222)",borderBottom:"1px solid rgba(255,180,71,0.2)",padding:"14px 16px",flexShrink:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:12}}>
+                <button onClick={()=>setViewTour(null)} style={{background:"rgba(255,255,255,0.08)",border:"none",color:C.muted,borderRadius:10,padding:"8px 12px",cursor:"pointer",fontSize:13,fontWeight:700,flexShrink:0}}>
+                  ← Back
+                </button>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:16,fontWeight:800,color:"#FFB347",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
+                  <div style={{fontSize:11,color:C.dim,display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
                     <span>📅 {viewTour.date}</span>
                     <span>🎮 {viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Đội"}</span>
-                    <span>⚔️ {(viewTour.matches||[]).length} trận</span>
+                    <span style={{color:viewTour.status==="active"?"#4ADE80":"#6B7280"}}>{viewTour.status==="active"?"● Đang diễn ra":"✓ Kết thúc"}</span>
                   </div>
                 </div>
-                {can("canManageTournament")&&viewTour.status==="active"&&(
-                  <button onClick={()=>{setActiveTour(viewTour);setViewTour(null);setShowMatchModal(true);}} style={{padding:"8px 14px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Thêm trận</button>
-                )}
               </div>
+              {can("canManageTournament")&&viewTour.status==="active"&&(
+                <button onClick={()=>{setActiveTour(viewTour);setViewTour(null);setShowMatchModal(true);}}
+                  style={{width:"100%",marginTop:10,padding:"11px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",color:"#fff",fontWeight:800,fontSize:14,cursor:"pointer",boxShadow:"0 3px 10px rgba(255,107,53,0.3)"}}>
+                  ⚔️ + Thêm kết quả trận
+                </button>
+              )}
+            </div>
+
+            {/* Scrollable body */}
+            <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+
               {/* Leaderboard */}
               {(()=>{
                 const scoreMap={};
                 (viewTour.matches||[]).forEach(m=>{
-                  [...m.team1,...m.team2].forEach(n=>{if(n&&!scoreMap[n])scoreMap[n]={name:n,wins:0,losses:0};});
-                  m.team1.forEach(n=>{if(n){if(m.score1>m.score2)scoreMap[n].wins++;else scoreMap[n].losses++;}});
-                  m.team2.forEach(n=>{if(n){if(m.score2>m.score1)scoreMap[n].wins++;else scoreMap[n].losses++;}});
+                  [...(m.team1||[]),...(m.team2||[])].forEach(n=>{if(n&&!scoreMap[n])scoreMap[n]={name:n,wins:0,losses:0,games_w:0,games_l:0};});
+                  (m.team1||[]).forEach(n=>{if(n){if(m.score1>m.score2){scoreMap[n].wins++;scoreMap[n].games_w+=m.score1;scoreMap[n].games_l+=m.score2;}else{scoreMap[n].losses++;scoreMap[n].games_w+=m.score1;scoreMap[n].games_l+=m.score2;}}});
+                  (m.team2||[]).forEach(n=>{if(n){if(m.score2>m.score1){scoreMap[n].wins++;scoreMap[n].games_w+=m.score2;scoreMap[n].games_l+=m.score1;}else{scoreMap[n].losses++;scoreMap[n].games_w+=m.score2;scoreMap[n].games_l+=m.score1;}}});
                 });
-                const leaderboard=Object.values(scoreMap).sort((a,b)=>b.wins-a.wins||(a.losses-b.losses));
-                return leaderboard.length>0?(
-                  <div style={{marginBottom:16}}>
-                    <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:8,letterSpacing:0.5}}>🏆 BẢNG XẾP HẠNG</div>
-                    {leaderboard.map((p,i)=>(
-                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:10,background:"rgba(255,255,255,0.03)",marginBottom:4,border:"1px solid rgba(255,255,255,0.06)"}}>
-                        <span style={{fontSize:14,width:24,textAlign:"center"}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":`${i+1}`}</span>
-                        <span style={{flex:1,fontWeight:600,fontSize:13,color:C.text}}>{p.name}</span>
-                        <span style={{fontSize:12,color:"#4ADE80",fontWeight:700}}>{p.wins}W</span>
-                        <span style={{fontSize:12,color:"#F87171",fontWeight:700}}>{p.losses}L</span>
-                        <span style={{fontSize:11,color:C.dim}}>{p.wins+p.losses>0?Math.round(p.wins/(p.wins+p.losses)*100):0}%</span>
+                const lb=Object.values(scoreMap).sort((a,b)=>b.wins-a.wins||(a.losses-b.losses));
+                if(lb.length===0) return null;
+                return(
+                  <div>
+                    <div style={{fontSize:12,fontWeight:800,color:"#FFB347",marginBottom:10,display:"flex",alignItems:"center",gap:6}}>🏆 BẢNG XẾP HẠNG</div>
+                    {lb.map((p,i)=>(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 12px",borderRadius:12,marginBottom:6,
+                        background:i===0?"rgba(255,215,0,0.06)":i===1?"rgba(192,192,192,0.05)":i===2?"rgba(205,127,50,0.05)":"rgba(255,255,255,0.03)",
+                        border:"1px solid "+(i===0?"rgba(255,215,0,0.15)":i===1?"rgba(192,192,192,0.1)":i===2?"rgba(205,127,50,0.1)":"rgba(255,255,255,0.06)")}}>
+                        <span style={{fontSize:18,width:28,textAlign:"center",flexShrink:0}}>{i===0?"🥇":i===1?"🥈":i===2?"🥉":<span style={{fontSize:13,color:C.dim,fontWeight:700}}>{i+1}</span>}</span>
+                        <span style={{flex:1,fontWeight:700,fontSize:14,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</span>
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <span style={{fontSize:12,padding:"3px 8px",borderRadius:8,background:"rgba(74,222,128,0.12)",color:"#4ADE80",fontWeight:700}}>{p.wins}W</span>
+                          <span style={{fontSize:12,padding:"3px 8px",borderRadius:8,background:"rgba(248,113,113,0.12)",color:"#F87171",fontWeight:700}}>{p.losses}L</span>
+                          <span style={{fontSize:11,padding:"3px 8px",borderRadius:8,background:"rgba(255,255,255,0.06)",color:C.muted,fontWeight:600}}>{p.wins+p.losses>0?Math.round(p.wins/(p.wins+p.losses)*100):0}%</span>
+                        </div>
                       </div>
                     ))}
                   </div>
-                ):null;
+                );
               })()}
-              {/* Match list */}
-              <div style={{fontSize:11,color:C.muted,fontWeight:700,marginBottom:8,letterSpacing:0.5}}>⚔️ KẾT QUẢ TRẬN ĐẤU ({(viewTour.matches||[]).length})</div>
-              {(viewTour.matches||[]).length===0?(
-                <div style={{textAlign:"center",color:C.dim,padding:"16px 0",fontSize:13}}>Chưa có kết quả nào</div>
-              ):(
-                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                  {[...(viewTour.matches||[])].reverse().map((m,i)=>(
-                    <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:10,padding:"10px 12px",border:"1px solid rgba(255,255,255,0.07)"}}>
-                      <div style={{fontSize:10,color:C.dim,marginBottom:6}}>Vòng {m.round} • {m.time}</div>
-                      <div style={{display:"flex",alignItems:"center",gap:8}}>
-                        <span style={{flex:1,fontSize:13,fontWeight:600,color:m.score1>m.score2?"#4ADE80":C.text,textAlign:"right"}}>{m.team1.join(" & ")}</span>
-                        <span style={{padding:"4px 12px",background:"rgba(255,107,53,0.15)",borderRadius:8,fontWeight:800,fontSize:14,color:C.orange,whiteSpace:"nowrap"}}>{m.score1} – {m.score2}</span>
-                        <span style={{flex:1,fontSize:13,fontWeight:600,color:m.score2>m.score1?"#4ADE80":C.text}}>{m.team2.join(" & ")}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+
+              {/* Match results */}
+              <div>
+                <div style={{fontSize:12,fontWeight:800,color:C.muted,marginBottom:10}}>⚔️ KẾT QUẢ TRẬN ({(viewTour.matches||[]).length})</div>
+                {(viewTour.matches||[]).length===0?(
+                  <div style={{textAlign:"center",color:C.dim,padding:"24px 0",fontSize:13,background:"rgba(255,255,255,0.02)",borderRadius:12,border:"1px solid "+C.border}}>Chưa có kết quả nào</div>
+                ):(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {[...(viewTour.matches||[])].reverse().map((m,i)=>{
+                      const w1=m.score1>m.score2, w2=m.score2>m.score1;
+                      return(
+                        <div key={i} style={{background:"rgba(255,255,255,0.03)",borderRadius:14,overflow:"hidden",border:"1px solid "+(m.confirmed?"rgba(74,222,128,0.15)":"rgba(255,255,255,0.07)")}}>
+                          {/* Match header */}
+                          <div style={{padding:"7px 12px",background:"rgba(255,255,255,0.02)",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                            <span style={{fontSize:10,color:C.dim}}>Vòng {m.round} · {m.time}</span>
+                            {m.confirmed&&<span style={{fontSize:9,color:"#4ADE80",fontWeight:700,padding:"2px 6px",borderRadius:6,background:"rgba(74,222,128,0.1)"}}>✔ Đã xác nhận</span>}
+                          </div>
+                          {/* Score */}
+                          <div style={{padding:"12px",display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{flex:1,textAlign:"right"}}>
+                              <div style={{fontSize:13,fontWeight:w1?800:500,color:w1?"#4ADE80":C.muted,lineHeight:1.3}}>{(m.team1||[]).join(" & ")||"?"}</div>
+                            </div>
+                            <div style={{background:w1||w2?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.06)",borderRadius:10,padding:"8px 14px",textAlign:"center",flexShrink:0,minWidth:70}}>
+                              <div style={{fontSize:20,fontWeight:900,color:C.orange,lineHeight:1}}>{m.score1} – {m.score2}</div>
+                              {m.games&&m.games.length>0&&(
+                                <div style={{fontSize:9,color:C.dim,marginTop:3}}>{m.games.map((g,gi)=>g.t1+"-"+g.t2).join(" | ")}</div>
+                              )}
+                            </div>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:13,fontWeight:w2?800:500,color:w2?"#4ADE80":C.muted,lineHeight:1.3}}>{(m.team2||[]).join(" & ")||"?"}</div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -1597,7 +1761,7 @@ export default function App(){
       </main>
 
       {/* ── BOTTOM NAV (mobile-first) ── */}
-      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(13,13,13,0.97)",borderTop:`1px solid ${C.border}`,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -4px 24px rgba(0,0,0,0.5)"}}>
+      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(13,13,13,0.97)",borderTop:"1px solid "+C.border,display:"flex",zIndex:100,paddingBottom:0,boxShadow:"0 -4px 24px rgba(0,0,0,0.5)"}}>
         {NAV.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
             style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"8px 2px 6px",border:"none",background:"transparent",cursor:"pointer",color:tab===t.key?C.orange:C.dim,transition:"all 0.2s",position:"relative"}}>
@@ -1611,7 +1775,7 @@ export default function App(){
       {/* ── ADD PLAYER MODAL ── */}
       {showAddModal&&can("canAddPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowAddModal(false)}>
-          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:`1px solid rgba(255,107,53,0.35)`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:18}}>➕ Thêm VĐV mới</div>
             {[
@@ -1627,7 +1791,7 @@ export default function App(){
             ))}
             <div style={{display:"flex",gap:10,marginTop:18}}>
               <button onClick={()=>setShowAddModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
-              <button onClick={handleAddPlayer} style={{flex:2,background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>Thêm VĐV</button>
+              <button onClick={handleAddPlayer} style={{flex:2,background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>Thêm VĐV</button>
             </div>
           </div>
         </div>
@@ -1636,7 +1800,7 @@ export default function App(){
       {/* ── ADJUST MODAL ── */}
       {adjModal&&can("canAdjustScore")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setAdjModal(null)}>
-          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:`1px solid rgba(255,107,53,0.35)`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:14}}>⚡ Điều chỉnh điểm</div>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,padding:"12px 14px",background:"rgba(255,107,53,0.08)",borderRadius:12}}>
@@ -1672,7 +1836,7 @@ export default function App(){
             </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>setAdjModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
-              <button onClick={handleAdjust} style={{flex:2,background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>Xác nhận</button>
+              <button onClick={handleAdjust} style={{flex:2,background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>Xác nhận</button>
             </div>
           </div>
         </div>
@@ -1681,7 +1845,7 @@ export default function App(){
       {/* ── LOGIN MODAL ── */}
       {auth.showLogin&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setAuth(a=>({...a,showLogin:false,err:""}))}>
-          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:`1px solid rgba(255,107,53,0.35)`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{textAlign:"center",marginBottom:22}}>
               <div style={{fontSize:36,marginBottom:8}}>🔐</div>
@@ -1703,7 +1867,7 @@ export default function App(){
             )}
             <div style={{display:"flex",gap:10,marginTop:16}}>
               <button onClick={()=>setAuth(a=>({...a,showLogin:false,err:"",u:"",p:""}))} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
-              <button onClick={handleLogin} style={{flex:2,background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>🔑 Đăng nhập</button>
+              <button onClick={handleLogin} style={{flex:2,background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800,boxShadow:"0 4px 14px rgba(255,107,53,0.4)"}}>🔑 Đăng nhập</button>
             </div>
             <div style={{marginTop:14,fontSize:11,color:C.dim,textAlign:"center"}}>Liên hệ quản trị viên CLB để được cấp tài khoản</div>
           </div>
@@ -1713,7 +1877,7 @@ export default function App(){
       {/* ── EDIT PLAYER MODAL ── */}
       {editModal&&can("canEditPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setEditModal(null)}>
-          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:"#60A5FA",marginBottom:18}}>✏️ Sửa thông tin VĐV</div>
             <div style={{padding:"10px 14px",background:"rgba(96,165,250,0.08)",borderRadius:10,marginBottom:16,fontSize:13,color:C.muted}}>
@@ -1739,9 +1903,267 @@ export default function App(){
       )}
 
       {/* ── DELETE CONFIRM MODAL ── */}
+      {/* ══════════════ REFEREE FULLSCREEN MODE ══════════════ */}
+      {refMode&&(
+        <div style={{position:"fixed",inset:0,background:"#0a0a0a",zIndex:500,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+
+          {/* Header */}
+          <div style={{background:"rgba(96,165,250,0.12)",borderBottom:"1px solid rgba(96,165,250,0.25)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:22}}>🏳️</span>
+              <div>
+                <div style={{fontWeight:800,fontSize:15,color:"#60A5FA"}}>Chế độ Trọng tài</div>
+                {refTour&&<div style={{fontSize:11,color:"#93C5FD"}}>{refTour.name} · {refTour.date}</div>}
+              </div>
+            </div>
+            <button onClick={()=>{setRefMode(false);setRefTour(null);setRefMatch(null);setRefGames([]);}} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.3)",color:"#F87171",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:13,fontWeight:700}}>
+              ✕ Thoát
+            </button>
+          </div>
+
+          <div style={{flex:1,padding:"16px",maxWidth:600,margin:"0 auto",width:"100%"}}>
+
+            {/* ── PIN Entry ── */}
+            {!refTour&&(
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"60vh",gap:20}}>
+                <div style={{fontSize:48}}>🔑</div>
+                <div style={{fontSize:20,fontWeight:800,color:"#60A5FA",textAlign:"center"}}>Nhập mã PIN giải đấu</div>
+                <div style={{fontSize:13,color:"#6B7280",textAlign:"center"}}>Nhận mã PIN từ BTC trước khi bắt đầu</div>
+                <div style={{width:"100%",maxWidth:320}}>
+                  <input
+                    value={refPinInput}
+                    onChange={e=>setRefPinInput(e.target.value.split("").filter(c=>c>="0"&&c<="9").join("").slice(0,6))}
+                    onKeyDown={e=>e.key==="Enter"&&handleRefPinSubmit()}
+                    style={{...MS,fontSize:28,textAlign:"center",letterSpacing:8,fontWeight:800,color:"#60A5FA",borderColor:"rgba(96,165,250,0.4)"}}
+                    placeholder="····"
+                    maxLength={6}
+                  />
+                  {refPinErr&&<div style={{color:"#F87171",fontSize:12,marginTop:6,textAlign:"center"}}>{refPinErr}</div>}
+                  <button onClick={handleRefPinSubmit} style={{width:"100%",marginTop:12,padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#60A5FA,#3B82F6)",color:"#fff",fontWeight:800,fontSize:16,cursor:"pointer",boxShadow:"0 4px 16px rgba(96,165,250,0.35)"}}>
+                    ✔ Xác nhận PIN
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── Player picker (when new match has no teams) ── */}
+            {refTour&&refMatch&&!refConfirmed&&(!refMatch.team1?.length||!refMatch.team2?.length)&&(()=>{
+              const isDouble=refTour.format==="double";
+              const allP=[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi"));
+              const t1=refMatch.team1||[], t2=refMatch.team2||[];
+              const maxT = isDouble?2:1;
+              const canStart = t1.length===maxT && t2.length===maxT;
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                  <div style={{fontSize:15,fontWeight:800,color:"#60A5FA"}}>Chọn VĐV thi đấu</div>
+                  <div style={{display:"flex",gap:10}}>
+                    {[[t1,"🔵 Đội 1"],[t2,"🔴 Đội 2"]].map(([team,label],ti)=>(
+                      <div key={ti} style={{flex:1,background:"rgba(255,255,255,0.04)",borderRadius:12,padding:"10px",border:"1px solid rgba(255,255,255,0.08)"}}>
+                        <div style={{fontSize:11,fontWeight:700,color:ti===0?"#60A5FA":"#F87171",marginBottom:8}}>{label} ({team.length}/{maxT})</div>
+                        {team.map(n=>(
+                          <div key={n} style={{fontSize:12,fontWeight:700,color:"#E5E7EB",background:"rgba(255,255,255,0.06)",borderRadius:8,padding:"6px 8px",marginBottom:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            {n}
+                            <button onClick={()=>{
+                              const newTeam=team.filter(x=>x!==n);
+                              setRefMatch(m=>({...m,[ti===0?"team1":"team2"]:newTeam}));
+                            }} style={{background:"none",border:"none",color:"#F87171",cursor:"pointer",fontSize:14}}>✕</button>
+                          </div>
+                        ))}
+                        {team.length<maxT&&<div style={{fontSize:11,color:"#4B5563",textAlign:"center",padding:"4px"}}>Chọn từ danh sách ↓</div>}
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+                    {allP.filter(p=>!t1.includes(p.name)&&!t2.includes(p.name)).map(p=>{
+                      const t1Full=t1.length>=maxT, t2Full=t2.length>=maxT;
+                      return(
+                        <div key={p.id} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,border:"1px solid rgba(255,255,255,0.06)"}}>
+                          <div>
+                            <span style={{fontWeight:700,fontSize:13,color:"#E5E7EB"}}>{p.name}</span>
+                            <span style={{fontSize:11,color:"#6B7280",marginLeft:8}}>{p.tier} · {p.boom.toFixed(2)}</span>
+                          </div>
+                          <div style={{display:"flex",gap:6}}>
+                            <button disabled={t1Full} onClick={()=>setRefMatch(m=>({...m,team1:[...t1,p.name]}))}
+                              style={{padding:"6px 12px",borderRadius:8,border:"none",
+                                background:t1Full?"rgba(255,255,255,0.04)":"rgba(96,165,250,0.2)",
+                                color:t1Full?"#4B5563":"#60A5FA",
+                                fontWeight:700,cursor:t1Full?"default":"pointer",fontSize:12}}>🔵 Đội 1</button>
+                            <button disabled={t2Full} onClick={()=>setRefMatch(m=>({...m,team2:[...t2,p.name]}))}
+                              style={{padding:"6px 12px",borderRadius:8,border:"none",
+                                background:t2Full?"rgba(255,255,255,0.04)":"rgba(248,113,113,0.2)",
+                                color:t2Full?"#4B5563":"#F87171",
+                                fontWeight:700,cursor:t2Full?"default":"pointer",fontSize:12}}>🔴 Đội 2</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",gap:10}}>
+                    <button onClick={handleRefExitMatch} style={{flex:1,padding:"13px",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#6B7280",fontWeight:700,cursor:"pointer"}}>← Quay lại</button>
+                    <button disabled={!canStart} onClick={()=>{
+                      const numGames=refTour?.bestOf||3;
+                      setRefGames(Array.from({length:numGames},()=>({t1:"",t2:""})));
+                    }} style={{flex:2,padding:"13px",borderRadius:12,border:"none",
+                      background:canStart?"linear-gradient(90deg,#60A5FA,#3B82F6)":"rgba(255,255,255,0.06)",
+                      color:canStart?"#fff":"#4B5563",
+                      fontWeight:800,cursor:canStart?"pointer":"default",fontSize:15}}>
+                      ▶ Bắt đầu nhập điểm
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Match scoring screen ── */}
+            {refTour&&refMatch&&!refConfirmed&&refMatch.team1?.length>0&&refMatch.team2?.length>0&&refGames.length>0&&(()=>{
+              const isDouble = refMatch.format==="double"||refTour.format==="double";
+              const t1 = refMatch.team1?.join(" & ")||"Đội 1";
+              const t2 = refMatch.team2?.join(" & ")||"Đội 2";
+              const s1 = refGames.filter(g=>(parseInt(g.t1)||0)>(parseInt(g.t2)||0)).length;
+              const s2 = refGames.filter(g=>(parseInt(g.t2)||0)>(parseInt(g.t1)||0)).length;
+              return(
+                <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                  {/* Match header */}
+                  <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:16,padding:"16px",textAlign:"center"}}>
+                    <div style={{fontSize:11,color:"#60A5FA",fontWeight:700,marginBottom:8,letterSpacing:1}}>VÒNG {refMatch.round} · {refTour.name}</div>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                      <div style={{flex:1,textAlign:"right"}}>
+                        <div style={{fontSize:15,fontWeight:800,color:"#E5E7EB"}}>{t1}</div>
+                      </div>
+                      <div style={{background:"rgba(255,255,255,0.08)",borderRadius:10,padding:"8px 16px",minWidth:80,textAlign:"center"}}>
+                        <div style={{fontSize:28,fontWeight:900,color:"#FBBF24"}}>{s1} – {s2}</div>
+                        <div style={{fontSize:10,color:"#6B7280"}}>Tổng game</div>
+                      </div>
+                      <div style={{flex:1,textAlign:"left"}}>
+                        <div style={{fontSize:15,fontWeight:800,color:"#E5E7EB"}}>{t2}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Game scores */}
+                  <div style={{fontSize:13,fontWeight:700,color:"#6B7280",letterSpacing:0.5}}>NHẬP ĐIỂM TỪNG GAME</div>
+                  {refGames.map((g,i)=>(
+                    <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:14,padding:"14px 16px"}}>
+                      <div style={{fontSize:12,color:"#60A5FA",fontWeight:700,marginBottom:10}}>GAME {i+1}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:10,color:"#6B7280",marginBottom:4,textAlign:"center"}}>{t1}</div>
+                          <input
+                            type="number" min="0" max="30"
+                            value={g.t1}
+                            onChange={e=>{const v=e.target.value;setRefGames(prev=>prev.map((x,j)=>j===i?{...x,t1:v}:x));}}
+                            style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"2px solid rgba(96,165,250,0.35)",borderRadius:12,padding:"14px 10px",color:"#E5E7EB",fontSize:28,fontWeight:800,textAlign:"center",outline:"none",boxSizing:"border-box"}}
+                          />
+                        </div>
+                        <div style={{fontSize:18,color:"#4B5563",fontWeight:800,flexShrink:0}}>–</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:10,color:"#6B7280",marginBottom:4,textAlign:"center"}}>{t2}</div>
+                          <input
+                            type="number" min="0" max="30"
+                            value={g.t2}
+                            onChange={e=>{const v=e.target.value;setRefGames(prev=>prev.map((x,j)=>j===i?{...x,t2:v}:x));}}
+                            style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"2px solid rgba(96,165,250,0.35)",borderRadius:12,padding:"14px 10px",color:"#E5E7EB",fontSize:28,fontWeight:800,textAlign:"center",outline:"none",boxSizing:"border-box"}}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {/* Action buttons */}
+                  <div style={{display:"flex",gap:10,marginTop:4}}>
+                    <button onClick={handleRefExitMatch} style={{flex:1,padding:"14px",borderRadius:12,border:"1px solid rgba(255,255,255,0.1)",background:"rgba(255,255,255,0.04)",color:"#6B7280",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                      ← Quay lại
+                    </button>
+                    <button onClick={handleRefSaveMatch} style={{flex:2,padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#4ADE80,#22C55E)",color:"#fff",fontWeight:800,cursor:"pointer",fontSize:15,boxShadow:"0 4px 16px rgba(74,222,128,0.3)"}}>
+                      ✔ Xác nhận kết quả
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* ── Confirmed screen ── */}
+            {refTour&&refMatch&&refConfirmed&&(()=>{
+              const s1=refGames.filter(g=>(parseInt(g.t1)||0)>(parseInt(g.t2)||0)).length;
+              const s2=refGames.filter(g=>(parseInt(g.t2)||0)>(parseInt(g.t1)||0)).length;
+              const winner = s1>s2 ? refMatch.team1?.join(" & ") : refMatch.team2?.join(" & ");
+              return(
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",minHeight:"50vh",gap:16,textAlign:"center"}}>
+                  <div style={{fontSize:56}}>🎉</div>
+                  <div style={{fontSize:20,fontWeight:800,color:"#4ADE80"}}>Đã xác nhận kết quả!</div>
+                  <div style={{background:"rgba(74,222,128,0.08)",border:"1px solid rgba(74,222,128,0.2)",borderRadius:16,padding:"16px 24px",minWidth:260}}>
+                    <div style={{fontSize:13,color:"#6B7280",marginBottom:6}}>Kết quả</div>
+                    <div style={{fontSize:32,fontWeight:900,color:"#FBBF24"}}>{s1} – {s2}</div>
+                    <div style={{fontSize:13,color:"#4ADE80",marginTop:6}}>🏆 {winner}</div>
+                  </div>
+                  {refGames.map((g,i)=>(
+                    <div key={i} style={{fontSize:12,color:"#6B7280"}}>Game {i+1}: {g.t1||0} – {g.t2||0}</div>
+                  ))}
+                  <button onClick={handleRefExitMatch} style={{padding:"12px 32px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#60A5FA,#3B82F6)",color:"#fff",fontWeight:800,cursor:"pointer",fontSize:14,marginTop:8}}>
+                    ← Nhập trận tiếp theo
+                  </button>
+                </div>
+              );
+            })()}
+
+            {/* ── Match list ── */}
+            {refTour&&!refMatch&&(
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                {/* Tournament info */}
+                <div style={{background:"rgba(96,165,250,0.08)",border:"1px solid rgba(96,165,250,0.2)",borderRadius:14,padding:"14px 16px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                    <div>
+                      <div style={{fontWeight:800,fontSize:16,color:"#60A5FA"}}>{refTour.name}</div>
+                      <div style={{fontSize:12,color:"#6B7280",marginTop:2}}>📅 {refTour.date} · {refTour.format==="double"?"👫 Đôi":refTour.format==="single"?"🎯 Đơn":"🔀 Hỗn hợp"} · Best of {refTour.bestOf||3}</div>
+                    </div>
+                    <span style={{padding:"4px 12px",borderRadius:20,background:"rgba(74,222,128,0.12)",color:"#4ADE80",fontSize:11,fontWeight:700,border:"1px solid rgba(74,222,128,0.25)"}}>● Đang diễn ra</span>
+                  </div>
+                </div>
+
+                {/* New match button */}
+                <button onClick={()=>{
+                  const newM={id:Date.now(),round:(refTour.matches||[]).length+1,format:refTour.format,team1:[],team2:[],score1:0,score2:0,time:new Date().toLocaleString("vi-VN"),confirmed:false};
+                  handleRefStartMatch(newM);
+                }} style={{padding:"14px",borderRadius:12,border:"none",background:"linear-gradient(90deg,#60A5FA,#3B82F6)",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer",boxShadow:"0 4px 16px rgba(96,165,250,0.3)"}}>
+                  ➕ Bắt đầu trận mới
+                </button>
+
+                {/* Existing matches */}
+                {(refTour.matches||[]).length>0&&(
+                  <div>
+                    <div style={{fontSize:12,color:"#6B7280",fontWeight:700,marginBottom:8,letterSpacing:0.5}}>LỊCH SỬ TRẬN ({(refTour.matches||[]).length})</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                      {[...(refTour.matches||[])].reverse().map((m,i)=>(
+                        <div key={m.id||i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid "+(m.confirmed?"rgba(74,222,128,0.2)":"rgba(255,255,255,0.08)"),borderRadius:12,padding:"12px 14px"}}>
+                          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                            <div style={{flex:1,fontSize:12}}>
+                              <div style={{fontWeight:700,color:"#E5E7EB"}}>{m.team1?.join(" & ")||"?"}</div>
+                              <div style={{color:"#6B7280",marginTop:2}}>vs {m.team2?.join(" & ")||"?"}</div>
+                            </div>
+                            <div style={{textAlign:"center",minWidth:60}}>
+                              <div style={{fontSize:18,fontWeight:900,color:"#FBBF24"}}>{m.score1}–{m.score2}</div>
+                              {m.confirmed&&<div style={{fontSize:9,color:"#4ADE80",fontWeight:700}}>✔ ĐÃ XÁC NHẬN</div>}
+                            </div>
+                            {!m.confirmed&&(
+                              <button onClick={()=>handleRefStartMatch(m)} style={{padding:"8px 12px",borderRadius:8,border:"none",background:"rgba(96,165,250,0.15)",color:"#60A5FA",fontWeight:700,cursor:"pointer",fontSize:12,flexShrink:0}}>
+                                ✏️ Nhập điểm
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {deleteConfirm&&can("canDeletePlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)",padding:"20px"}} onClick={()=>setDeleteConfirm(null)}>
-          <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(239,68,68,0.4)",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 24px 60px rgba(0,0,0,0.7)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(239,68,68,0.4)",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 24px 60px rgba(0,0,0,0.7)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:44,marginBottom:14}}>🗑️</div>
             <div style={{fontSize:17,fontWeight:800,color:"#EF4444",marginBottom:8}}>Xóa VĐV?</div>
             <div style={{fontSize:14,color:C.muted,marginBottom:6,lineHeight:1.5}}>
