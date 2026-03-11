@@ -699,8 +699,8 @@ export default function App(){
     const el=document.createElement("style");
     el.textContent=`
       *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-      html,body{margin:0;padding:0;overflow-x:hidden;-webkit-text-size-adjust:100%;}
-      body{overscroll-behavior-y:contain;}
+      html,body{margin:0;padding:0;overflow:hidden;height:100%;-webkit-text-size-adjust:100%;}
+      body{overscroll-behavior-y:auto;}
       input,select,textarea,button{font-family:inherit;-webkit-appearance:none;appearance:none;}
       select{-webkit-appearance:none;appearance:none;}
       ::-webkit-scrollbar{width:4px;height:4px;}
@@ -716,7 +716,7 @@ export default function App(){
 
   return (
     <>
-    <div style={{minHeight:"100dvh",background:"linear-gradient(160deg,#111 0%,#181818 60%,#222 100%)",color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden",WebkitOverflowScrolling:"touch"}}>
+    <div style={{height:"100dvh",background:"linear-gradient(160deg,#111 0%,#181818 60%,#222 100%)",color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden",overflowY:"auto",WebkitOverflowScrolling:"touch"}}>
       {/* Ambient glows */}
       <div style={{position:"fixed",top:-150,left:-150,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,107,53,0.09) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"fixed",bottom:-120,right:-120,width:350,height:350,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,180,71,0.07) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
