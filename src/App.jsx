@@ -1344,7 +1344,7 @@ export default function App(){
                       <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(255,107,53,0.08)",border:"1px solid rgba(255,107,53,0.4)",borderRadius:10,cursor:"pointer"}}
                         onClick={()=>{setShowPlayerPicker(true);setPlayerSearch("");}}>
                         {(()=>{
-                          const p=[...players.male,...players.female].find(x=>x.name===tourRegForm.playerName);
+                          const _pm=players.male.find(x=>x.name===tourRegForm.playerName); const _pf=players.female.find(x=>x.name===tourRegForm.playerName); const p=_pm?{..._pm,gender:"male"}:_pf?{..._pf,gender:"female"}:null;
                           return p?(
                             <>
                               <span style={{fontSize:16}}>{p.gender==="male"?"♂":"♀"}</span>
@@ -1595,14 +1595,14 @@ export default function App(){
                 <div style={{fontSize:12,color:C.orange,fontWeight:800,marginBottom:10}}>🔴 ĐỘI 1</div>
                 <select value={matchForm.p1} onChange={e=>setMatchForm(f=>({...f,p1:e.target.value}))} style={{...MS,marginBottom:10}}>
                   <option value="">-- Chọn VĐV --</option>
-                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                  {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                     <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
                   ))}
                 </select>
                 {activeTour.format==="double"&&(
                   <select value={matchForm.p2} onChange={e=>setMatchForm(f=>({...f,p2:e.target.value}))} style={MS}>
                     <option value="">-- VĐV 2 (đôi) --</option>
-                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                    {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                       <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
                     ))}
                   </select>
@@ -1614,14 +1614,14 @@ export default function App(){
                 <div style={{fontSize:12,color:"#60A5FA",fontWeight:800,marginBottom:10}}>🔵 ĐỘI 2</div>
                 <select value={matchForm.p3} onChange={e=>setMatchForm(f=>({...f,p3:e.target.value}))} style={{...MS,marginBottom:10}}>
                   <option value="">-- Chọn VĐV --</option>
-                  {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                  {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                     <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
                   ))}
                 </select>
                 {activeTour.format==="double"&&(
                   <select value={matchForm.p4} onChange={e=>setMatchForm(f=>({...f,p4:e.target.value}))} style={MS}>
                     <option value="">-- VĐV 2 (đôi) --</option>
-                    {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
+                    {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                       <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
                     ))}
                   </select>
@@ -1806,8 +1806,10 @@ export default function App(){
           {/* Player list */}
           <div style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
             {(()=>{
-              const allPlayers=[...players.male,...players.female]
-                .sort((a,b)=>a.name.localeCompare(b.name,"vi"));
+              const allPlayers=[
+                ...players.male.map(p=>({...p,gender:"male"})),
+                ...players.female.map(p=>({...p,gender:"female"}))
+              ].sort((a,b)=>a.name.localeCompare(b.name,"vi"));
               const filtered=playerSearch.trim()
                 ? allPlayers.filter(p=>p.name.toLowerCase().includes(playerSearch.toLowerCase()))
                 : allPlayers;
