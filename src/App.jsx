@@ -9,9 +9,41 @@ const TIER_BOOM = {
 };
 const TIERS = ["1+","1-","2++","2+","2","2-","3+","3"];
 const ADMIN_CREDENTIALS = [
-  {username:"admin",password:"pickleboom@2026",label:"Administrator"},
-  {username:"huypham",password:"captain@2026",label:"Huy Phạm "},
+  {username:"admin",    password:"pickleboom@2026", label:"Administrator", role:"admin"},
+  {username:"huypham",  password:"captain@2026",    label:"Huy Phạm",      role:"mod"},
 ];
+
+// Role permission map
+const ROLE_PERMISSIONS = {
+  admin: {
+    label:"Administrator",
+    color:"#FF6B35",
+    badge:"👑 Admin",
+    canEditPlayers: true,
+    canDeletePlayers: true,
+    canAddPlayers: true,
+    canAdjustScore: true,
+    canCreateTournament: true,
+    canManageTournament: true,
+    canApproveReg: true,
+    canResetData: true,
+    canManageRoles: true,
+  },
+  mod: {
+    label:"Moderator",
+    color:"#60A5FA",
+    badge:"🛡 Mod",
+    canEditPlayers: false,
+    canDeletePlayers: false,
+    canAddPlayers: false,
+    canAdjustScore: true,
+    canCreateTournament: true,
+    canManageTournament: true,
+    canApproveReg: false,
+    canResetData: false,
+    canManageRoles: false,
+  },
+};
 
 const INIT = {
   male:[
@@ -134,6 +166,7 @@ const sbFetch = async (path, options={}) => {
   });
   if (!res.ok) {
     const err = await res.text();
+    console.error(`[sbFetch] ${options.method||"GET"} ${path} → ${res.status}:`, err);
     throw new Error(err);
   }
   const text = await res.text();
@@ -216,9 +249,9 @@ export default function App(){
         if (hRows) {
           setHistory(hRows.map(r=>({id:r.id,action:r.action,player:r.player,detail:r.detail||"",time:r.time||""})));
         }
-        if (rRows) setRegList(rRows);
+        if (Array.isArray(rRows)) setRegList(rRows);
         if (Array.isArray(tRows)) {
-          const tours = tRows.map(t=>({...t, matches: typeof t.matches==="string"?JSON.parse(t.matches||"[]"):t.matches||[], tourRegs: typeof t.tourRegs==="string"?JSON.parse(t.tourRegs||"[]"):t.tourRegs||[]}));
+          const tours = tRows.map(t=>({...t, matches: typeof t.matches==="string"?JSON.parse(t.matches||"[]"):t.matches||[], tourRegs: typeof t.tour_regs==="string"?JSON.parse(t.tour_regs||"[]"):(t.tourRegs||[])}));
           setTournaments(tours);
         }
         setDbReady(true);
@@ -271,6 +304,9 @@ export default function App(){
   }),[allPlayers,mmSearch,mmGender]);
 
   const isAdmin=auth.loggedIn;
+  const userRole = auth.user?.role || null;
+  const perms = userRole ? ROLE_PERMISSIONS[userRole] : {};
+  const can = (perm) => !!perms[perm];
 
   const showNotif=(msg,type="ok")=>{
     setNotif({msg,type});
@@ -301,7 +337,7 @@ export default function App(){
     setRegLoading(true);
     const entry={id:Date.now(),name:regForm.name.trim(),email:regForm.email.trim(),pvna:regForm.pvna.trim(),gender:regForm.gender,note:regForm.note.trim(),time:new Date().toLocaleString("vi-VN"),status:"pending"};
     setRegList(prev=>[entry,...prev]);
-    try{await sbFetch("registrations",{method:"POST",body:JSON.stringify(entry)});}catch(e){console.error("reg:",e);}
+    try{await sbFetch("registrations",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(entry)});}catch(e){console.error("reg:",e);}
     setRegSubmitted(true);
     setRegLoading(false);
     setRegForm({name:"",email:"",pvna:"",gender:"male",note:""});
@@ -433,7 +469,21 @@ export default function App(){
     setActiveTour(tour);
     setTab("tournament");
     showNotif("Đã tạo giải: "+tour.name);
-    try { await sbFetch("tournaments",{method:"POST",body:JSON.stringify({...tour,matches:JSON.stringify([])})}); } catch(e){console.error(e);}
+    try {
+      const payload = {
+        id: tour.id,
+        name: tour.name,
+        date: tour.date,
+        format: tour.format,
+        rounds: tour.rounds,
+        note: tour.note,
+        matches: "[]",
+        tour_regs: "[]",
+        status: "active",
+        created: tour.created,
+      };
+      await sbFetch("tournaments", {method:"POST", headers:{"Prefer":"return=minimal"}, body:JSON.stringify(payload)});
+    } catch(e){console.error("create tour error:",e);}
   };
 
   const handleAddMatch = async () => {
@@ -540,6 +590,7 @@ export default function App(){
     {key:"players",icon:"👥",label:"VĐV"},
     {key:"ranking",icon:"🏆",label:"Xếp hạng"},
     {key:"tournament",icon:"🏅",label:"Giải đấu"},
+    {key:"roles",icon:"🔐",label:"Phân quyền"},
     {key:"matchmake",icon:"⚔️",label:"Ghép kèo"},
     {key:"adjust",icon:"⚡",label:"Điều chỉnh"},
     {key:"register",icon:"📝",label:"Đăng ký"},
@@ -571,11 +622,11 @@ export default function App(){
           {isAdmin?(
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <div style={{textAlign:"right"}}>
-                <div style={{fontSize:10,color:"#FF6B35",fontWeight:700}}>🔐 {auth.user.label}</div>
+                <div style={{fontSize:10,color:ROLE_PERMISSIONS[userRole]?.color||"#FF6B35",fontWeight:700}}>{ROLE_PERMISSIONS[userRole]?.badge||"🔐"} {auth.user.label}</div>
                 <div style={{fontSize:9,color:C.dim}}>Admin</div>
               </div>
               <button onClick={handleLogout} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>Đăng xuất</button>
-              <button onClick={()=>{if(window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}} title="Reset dữ liệu gốc">↺</button>
+              <button onClick={()=>{if(can("canResetData")&&window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}} title="Reset dữ liệu gốc">↺</button>
             </div>
           ):(
             <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{background:"rgba(255,107,53,0.12)",border:`1px solid rgba(255,107,53,0.35)`,color:"#FF6B35",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
@@ -672,7 +723,7 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.orange}}>VĐV ({filtered.length})</div>
               {isAdmin?(
-                <button onClick={()=>setShowAddModal(true)} style={{background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>
+                {can("canAddPlayers")&&<button onClick={()=>setShowAddModal(true)} style={{background:`linear-gradient(90deg,${C.orange},${C.orange2})`,border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>}
               ):(
                 <span style={{fontSize:11,color:C.dim,display:"flex",alignItems:"center",gap:4}}>🔒 Chỉ Admin</span>
               )}
@@ -712,7 +763,7 @@ export default function App(){
                         </div>
                       )}
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
-                        {isAdmin?(
+                        {can("canEditPlayers")?(
                           <select value={p.tier} onChange={e=>handleTierChange(p,e.target.value)}
                             style={{background:"transparent",border:`1px solid ${TIER_COLORS[p.tier]}66`,borderRadius:8,padding:"2px 6px",fontSize:11,fontWeight:800,cursor:"pointer",outline:"none",color:TIER_COLORS[p.tier]}}>
                             {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
@@ -726,18 +777,24 @@ export default function App(){
                     {/* Actions */}
                     {isAdmin?(
                       <div style={{display:"flex",gap:6,flexShrink:0}}>
-                        <button onClick={()=>{setAdjModal(p);setAdjForm({type:"",value:0,note:""}); }}
-                          style={{background:"rgba(255,107,53,0.12)",border:"1px solid rgba(255,107,53,0.35)",color:C.orange,borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14,fontWeight:700}} title="Điều chỉnh điểm">
-                          ⚡
-                        </button>
-                        <button onClick={()=>{setEditModal(p);setEditForm({name:p.name,tier:p.tier,gender:p.gender,remark:p.remark||""});}}
-                          style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Sửa thông tin">
-                          ✏️
-                        </button>
-                        <button onClick={()=>setDeleteConfirm(p)}
-                          style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Xóa VĐV">
-                          🗑️
-                        </button>
+                        {can("canAdjustScore")&&(
+                          <button onClick={()=>{setAdjModal(p);setAdjForm({type:"",value:0,note:""}); }}
+                            style={{background:"rgba(255,107,53,0.12)",border:"1px solid rgba(255,107,53,0.35)",color:C.orange,borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14,fontWeight:700}} title="Điều chỉnh điểm">
+                            ⚡
+                          </button>
+                        )}
+                        {can("canEditPlayers")&&(
+                          <button onClick={()=>{setEditModal(p);setEditForm({name:p.name,tier:p.tier,gender:p.gender,remark:p.remark||""});}}
+                            style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Sửa thông tin">
+                            ✏️
+                          </button>
+                        )}
+                        {can("canDeletePlayers")&&(
+                          <button onClick={()=>setDeleteConfirm(p)}
+                            style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Xóa VĐV">
+                            🗑️
+                          </button>
+                        )}
                       </div>
                     ):(
                       <span style={{fontSize:16,flexShrink:0}}>🔒</span>
@@ -898,13 +955,13 @@ export default function App(){
         {tab==="adjust"&&(
           <div style={{display:"flex",flexDirection:"column",gap:14}}>
             <div style={{fontSize:18,fontWeight:800,color:C.orange}}>Thưởng / Phạt điểm</div>
-            {!isAdmin&&(
+            {!can("canAdjustScore")&&(
               <div style={{display:"flex",alignItems:"flex-start",gap:12,padding:"14px",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",borderRadius:14}}>
                 <span style={{fontSize:22,flexShrink:0}}>🔒</span>
                 <div style={{flex:1}}>
                   <div style={{fontSize:13,fontWeight:700,color:"#EF4444",marginBottom:4}}>Quyền truy cập bị giới hạn</div>
-                  <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Chỉ Administrator mới có thể điều chỉnh điểm trình VĐV.</div>
-                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{marginTop:10,background:"rgba(255,107,53,0.15)",border:`1px solid rgba(255,107,53,0.4)`,color:"#FF6B35",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>🔑 Đăng nhập Admin</button>
+                  <div style={{fontSize:12,color:C.muted,lineHeight:1.5}}>Cần quyền Admin hoặc Moderator để điều chỉnh điểm trình VĐV.</div>
+                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{marginTop:10,background:"rgba(255,107,53,0.15)",border:`1px solid rgba(255,107,53,0.4)`,color:"#FF6B35",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>🔑 Đăng nhập</button>
                 </div>
               </div>
             )}
@@ -983,6 +1040,108 @@ export default function App(){
           </div>
         )}
 
+        {/* ════ PHÂN QUYỀN ════ */}
+        {tab==="roles"&&(
+          <div style={{display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{fontSize:18,fontWeight:800,color:C.orange}}>🔐 Phân quyền hệ thống</div>
+
+            {/* Role cards */}
+            {[
+              {role:"admin", icon:"👑", color:"#FF6B35", bg:"rgba(255,107,53,0.08)", border:"rgba(255,107,53,0.25)",
+                perms:[
+                  ["✅","Quản lý VĐV","Thêm / sửa / xóa vận động viên"],
+                  ["✅","Chỉnh điểm trình","Điều chỉnh điểm BOOM từng VĐV"],
+                  ["✅","Quản lý giải đấu","Tạo, cập nhật, kết thúc giải đấu"],
+                  ["✅","Duyệt đăng ký","Duyệt / từ chối đăng ký thành viên & giải đấu"],
+                  ["✅","Reset dữ liệu","Reset toàn bộ dữ liệu về mặc định"],
+                  ["✅","Phân quyền","Toàn quyền quản lý hệ thống"],
+                ]
+              },
+              {role:"mod", icon:"🛡", color:"#60A5FA", bg:"rgba(96,165,250,0.08)", border:"rgba(96,165,250,0.25)",
+                perms:[
+                  ["❌","Quản lý VĐV","Không thêm / sửa / xóa VĐV"],
+                  ["✅","Chỉnh điểm trình","Được điều chỉnh điểm BOOM"],
+                  ["✅","Quản lý giải đấu","Được tạo và cập nhật giải đấu"],
+                  ["❌","Duyệt đăng ký","Không duyệt đăng ký thành viên"],
+                  ["❌","Reset dữ liệu","Không được reset hệ thống"],
+                  ["❌","Phân quyền","Không quản lý tài khoản"],
+                ]
+              },
+            ].map(({role,icon,color,bg,border,perms})=>(
+              <Card key={role} style={{border:`1px solid ${border}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+                  <div style={{width:40,height:40,borderRadius:12,background:bg,border:`1px solid ${border}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{icon}</div>
+                  <div>
+                    <div style={{fontWeight:800,fontSize:15,color}}>{ROLE_PERMISSIONS[role].label}</div>
+                    <div style={{fontSize:11,color:C.muted}}>Role: <code style={{background:"rgba(255,255,255,0.07)",padding:"1px 6px",borderRadius:4,color}}>{role}</code></div>
+                  </div>
+                  {userRole===role&&(
+                    <span style={{marginLeft:"auto",fontSize:10,padding:"3px 10px",borderRadius:20,background:`${color}22`,color,border:`1px solid ${color}44`,fontWeight:700}}>● Đang đăng nhập</span>
+                  )}
+                </div>
+                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                  {perms.map(([icon2,label,desc],i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"8px 10px",borderRadius:10,background:icon2==="✅"?"rgba(74,222,128,0.05)":"rgba(255,255,255,0.02)",border:`1px solid ${icon2==="✅"?"rgba(74,222,128,0.12)":"rgba(255,255,255,0.06)"}`}}>
+                      <span style={{fontSize:14,flexShrink:0}}>{icon2}</span>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700,color:icon2==="✅"?"#E5E7EB":C.dim}}>{label}</div>
+                        <div style={{fontSize:11,color:C.dim,marginTop:1}}>{desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            ))}
+
+            {/* Account list - visible to all logged in */}
+            {isAdmin&&can("canManageRoles")&&(
+              <Card>
+                <SectionTitle>👤 Danh sách tài khoản</SectionTitle>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {ADMIN_CREDENTIALS.map((acc,i)=>{
+                    const rp = ROLE_PERMISSIONS[acc.role];
+                    return(
+                      <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:"rgba(255,255,255,0.04)",borderRadius:12,border:"1px solid rgba(255,255,255,0.08)"}}>
+                        <div style={{width:36,height:36,borderRadius:10,background:rp.color+"22",border:`1px solid ${rp.color}44`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                          {acc.role==="admin"?"👑":"🛡"}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontWeight:700,fontSize:13,color:C.text}}>{acc.label}</div>
+                          <div style={{fontSize:11,color:C.muted,display:"flex",gap:10,flexWrap:"wrap",marginTop:2}}>
+                            <span>👤 {acc.username}</span>
+                            <span style={{color:rp.color,fontWeight:600}}>{rp.badge}</span>
+                          </div>
+                        </div>
+                        {auth.user?.username===acc.username&&(
+                          <span style={{fontSize:10,padding:"3px 8px",borderRadius:20,background:"rgba(74,222,128,0.12)",color:"#4ADE80",fontWeight:700,border:"1px solid rgba(74,222,128,0.25)"}}>● Online</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{marginTop:12,padding:"10px 14px",background:"rgba(255,107,53,0.06)",borderRadius:10,border:"1px solid rgba(255,107,53,0.15)"}}>
+                  <div style={{fontSize:11,color:C.muted,lineHeight:1.6}}>
+                    💡 Để thêm/sửa tài khoản, liên hệ developer cập nhật trong file <code style={{background:"rgba(255,255,255,0.07)",padding:"1px 5px",borderRadius:4,color:C.orange}}>ADMIN_CREDENTIALS</code>
+                  </div>
+                </div>
+              </Card>
+            )}
+
+            {/* Not logged in */}
+            {!isAdmin&&(
+              <Card>
+                <div style={{textAlign:"center",padding:"20px 0"}}>
+                  <div style={{fontSize:36,marginBottom:10}}>🔒</div>
+                  <div style={{fontSize:14,fontWeight:700,color:"#EF4444",marginBottom:6}}>Cần đăng nhập để xem thông tin phân quyền</div>
+                  <button onClick={()=>setAuth(a=>({...a,showLogin:true}))} style={{padding:"10px 24px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,cursor:"pointer",fontSize:14}}>
+                    🔑 Đăng nhập
+                  </button>
+                </div>
+              </Card>
+            )}
+          </div>
+        )}
+
         {/* ════ ĐĂNG KÝ THÀNH VIÊN ════ */}
         {tab==="register"&&(
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -1036,7 +1195,7 @@ export default function App(){
             )}
 
             {/* Admin: view registrations */}
-            {isAdmin&&(
+            {can("canApproveReg")&&(
               <Card>
                 <SectionTitle>📋 Danh sách đăng ký ({regList.length})</SectionTitle>
                 {regList.length===0?(
@@ -1097,7 +1256,7 @@ export default function App(){
             {/* Header + Create button */}
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.orange}}>🏅 Quản lý giải đấu</div>
-              {isAdmin&&(
+              {can("canCreateTournament")&&(
                 <button onClick={()=>setShowTourModal(true)} style={{padding:"8px 16px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>
                   + Tạo giải
                 </button>
@@ -1110,7 +1269,7 @@ export default function App(){
                 <div style={{textAlign:"center",padding:"30px 0",color:C.dim}}>
                   <div style={{fontSize:36,marginBottom:10}}>🏅</div>
                   <div style={{fontSize:14}}>Chưa có giải đấu nào</div>
-                  {isAdmin&&<div style={{fontSize:12,marginTop:6,color:C.muted}}>Nhấn "+ Tạo giải" để bắt đầu</div>}
+                  {can("canCreateTournament")&&<div style={{fontSize:12,marginTop:6,color:C.muted}}>Nhấn "+ Tạo giải" để bắt đầu</div>}
                 </div>
               </Card>
             ):(
@@ -1137,13 +1296,13 @@ export default function App(){
                       </div>
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         <button onClick={()=>setViewTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(96,165,250,0.15)",color:"#60A5FA",fontWeight:700,cursor:"pointer",fontSize:12}}>👁 Xem</button>
-                        {isAdmin&&tour.status==="active"&&(
+                        {can("canManageTournament")&&tour.status==="active"&&(
                           <>
                             <button onClick={()=>{setActiveTour(tour);setShowMatchModal(true);}} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(255,107,53,0.15)",color:C.orange,fontWeight:700,cursor:"pointer",fontSize:12}}>+ Trận</button>
                             <button onClick={()=>handleEndTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(74,222,128,0.1)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12}}>🏁 Kết thúc</button>
                           </>
                         )}
-                        {isAdmin&&<button onClick={()=>handleDeleteTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(239,68,68,0.1)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12}}>🗑</button>}
+                        {can("canDeletePlayers")&&<button onClick={()=>handleDeleteTour(tour)} style={{padding:"6px 12px",borderRadius:8,border:"none",background:"rgba(239,68,68,0.1)",color:"#F87171",fontWeight:700,cursor:"pointer",fontSize:12}}>🗑</button>}
                       </div>
                     </div>
                   </Card>
@@ -1222,7 +1381,7 @@ export default function App(){
             </Card>
 
             {/* ── Admin: manage registrations per tournament ── */}
-            {isAdmin&&tournaments.length>0&&(
+            {can("canApproveReg")&&tournaments.length>0&&(
               <Card>
                 <SectionTitle>👑 Quản lý đăng ký (Admin)</SectionTitle>
                 <div style={{marginBottom:12}}>
@@ -1377,7 +1536,7 @@ export default function App(){
         )}
 
         {/* ════ CREATE TOURNAMENT MODAL ════ */}
-        {showTourModal&&isAdmin&&(
+        {showTourModal&&can("canCreateTournament")&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowTourModal(false)}>
             <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(255,107,53,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
               <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
@@ -1409,7 +1568,7 @@ export default function App(){
         )}
 
         {/* ════ ADD MATCH MODAL ════ */}
-        {showMatchModal&&activeTour&&isAdmin&&(
+        {showMatchModal&&activeTour&&can("canManageTournament")&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowMatchModal(false)}>
             <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(96,165,250,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
               <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
@@ -1472,7 +1631,7 @@ export default function App(){
                     <span>⚔️ {(viewTour.matches||[]).length} trận</span>
                   </div>
                 </div>
-                {isAdmin&&viewTour.status==="active"&&(
+                {can("canManageTournament")&&viewTour.status==="active"&&(
                   <button onClick={()=>{setActiveTour(viewTour);setViewTour(null);setShowMatchModal(true);}} style={{padding:"8px 14px",borderRadius:10,border:"none",background:`linear-gradient(90deg,${C.orange},${C.orange2})`,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Thêm trận</button>
                 )}
               </div>
@@ -1571,7 +1730,7 @@ export default function App(){
       </nav>
 
       {/* ── ADD PLAYER MODAL ── */}
-      {showAddModal&&isAdmin&&(
+      {showAddModal&&can("canAddPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowAddModal(false)}>
           <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:`1px solid rgba(255,107,53,0.35)`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
@@ -1596,7 +1755,7 @@ export default function App(){
       )}
 
       {/* ── ADJUST MODAL ── */}
-      {adjModal&&isAdmin&&(
+      {adjModal&&can("canAdjustScore")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setAdjModal(null)}>
           <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:`1px solid rgba(255,107,53,0.35)`,borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
@@ -1647,7 +1806,7 @@ export default function App(){
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{textAlign:"center",marginBottom:22}}>
               <div style={{fontSize:36,marginBottom:8}}>🔐</div>
-              <div style={{fontSize:17,fontWeight:900,color:C.orange}}>Đăng nhập Admin</div>
+              <div style={{fontSize:17,fontWeight:900,color:C.orange}}>🔑 Đăng nhập hệ thống</div>
               <div style={{fontSize:11,color:C.dim,marginTop:4}}>Chỉ quản trị viên được phép chỉnh sửa điểm trình</div>
             </div>
             <div style={{marginBottom:12}}>
@@ -1673,7 +1832,7 @@ export default function App(){
       )}
 
       {/* ── EDIT PLAYER MODAL ── */}
-      {editModal&&isAdmin&&(
+      {editModal&&can("canEditPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setEditModal(null)}>
           <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
@@ -1701,7 +1860,7 @@ export default function App(){
       )}
 
       {/* ── DELETE CONFIRM MODAL ── */}
-      {deleteConfirm&&isAdmin&&(
+      {deleteConfirm&&can("canDeletePlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)",padding:"20px"}} onClick={()=>setDeleteConfirm(null)}>
           <div style={{background:`linear-gradient(145deg,${C.bg2},${C.bg3})`,border:"1px solid rgba(239,68,68,0.4)",borderRadius:20,padding:"28px 24px",width:"100%",maxWidth:380,boxShadow:"0 24px 60px rgba(0,0,0,0.7)",textAlign:"center"}} onClick={e=>e.stopPropagation()}>
             <div style={{fontSize:44,marginBottom:14}}>🗑️</div>
