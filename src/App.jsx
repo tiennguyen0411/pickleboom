@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 const TIER_COLORS = {
   "1+":"#FF6B35","1-":"#FF8C5A","2++":"#FFB347","2+":"#FFC87A",
@@ -1727,6 +1728,7 @@ export default function App(){
       )}
 
     </div>
+    <Analytics />
     </>
   );
 }
