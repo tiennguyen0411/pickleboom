@@ -240,7 +240,8 @@ export default function App(){
       if (pRows && pRows.length > 0) {
         setPlayers(rowsToPlayers(pRows));
       } else {
-        await seedDatabase();
+        // Only seed if truly empty (not a parse error)
+        console.warn("[load] players empty, skipping auto-seed to prevent 401");
       }
       if (Array.isArray(hRows)) {
         setHistory(hRows.map(r=>({id:r.id,action:r.action,player:r.player,detail:r.detail||"",time:r.time||""})));
