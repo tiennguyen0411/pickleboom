@@ -155,15 +155,16 @@ const SB_URL = "https://oevgauxkildxdrqnphnw.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ldmdhdXhraWxkeGRycW5waG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMzYzOTUsImV4cCI6MjA4ODcxMjM5NX0.SMw09iIB6-3kaEjzXrxF7tP8DsN375linNZPxX1B2kc";
 
 const sbFetch = async (path, options={}) => {
+  const {headers: optHeaders={}, ...restOptions} = options;
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
+    ...restOptions,
     headers: {
       "apikey": SB_KEY,
       "Authorization": `Bearer ${SB_KEY}`,
       "Content-Type": "application/json",
       "Prefer": "return=minimal",
-      ...options.headers,
+      ...optHeaders,
     },
-    ...options,
   });
   if (!res.ok) {
     const err = await res.text();
@@ -225,6 +226,7 @@ export default function App(){
   const [regLoading,setRegLoading]=useState(false);
   const [tournaments,setTournaments]=useState([]);
   const [showTourModal,setShowTourModal]=useState(false);
+  const [editTourModal,setEditTourModal]=useState(null); // tour being edited
   const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3"});
   const [activeTour,setActiveTour]=useState(null);
   const [showMatchModal,setShowMatchModal]=useState(false);
@@ -523,6 +525,37 @@ export default function App(){
     try { await sbFetch(`tournaments?id=eq.${activeTour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(updatedMatches)})}); } catch(e){console.error(e);}
   };
 
+  const handleUpdateTour = async () => {
+    if(!editTourModal||!editTourModal.form.name.trim()||!editTourModal.form.date.trim()) return;
+    const {form, tour} = editTourModal;
+    const updated = {
+      ...tour,
+      name: form.name.trim(),
+      date: form.date.trim(),
+      format: form.format,
+      rounds: parseInt(form.rounds)||1,
+      note: form.note.trim(),
+      pin: form.pin.trim()||tour.pin,
+      bestOf: parseInt(form.bestOf)||3,
+    };
+    setTournaments(prev=>prev.map(t=>t.id===tour.id?updated:t));
+    if(activeTour?.id===tour.id) setActiveTour(updated);
+    if(viewTour?.id===tour.id) setViewTour(updated);
+    setEditTourModal(null);
+    showNotif("Đã cập nhật giải: "+updated.name);
+    try {
+      await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({
+        name: updated.name,
+        date: updated.date,
+        format: updated.format,
+        rounds: updated.rounds,
+        note: updated.note,
+        pin: updated.pin,
+        best_of: updated.bestOf,
+      })});
+    } catch(e){console.error("update tour error:",e);}
+  };
+
   const handleEndTour = async (tour) => {
     const updated = {...tour, status:"finished"};
     setTournaments(prev=>prev.map(t=>t.id===tour.id?updated:t));
@@ -561,7 +594,7 @@ export default function App(){
   // ── Tournament Registration handlers ──
   const handleTourRegister = async () => {
     const {tourId,playerName,contact,content,partner,note} = tourRegForm;
-    if(!tourId||!playerName||!contact) return;
+    if(!tourId||!playerName) return;
     const tour = tournaments.find(t=>t.id===parseInt(tourId)||t.id===tourId);
     if(!tour) return;
     const entry = {id:Date.now(),tourId:tour.id,tourName:tour.name,playerName,contact,content,partner,note,status:"pending",time:new Date().toLocaleString("vi-VN")};
@@ -573,7 +606,7 @@ export default function App(){
     setTourRegForm({tourId:"",playerName:"",contact:"",content:"single",partner:"",note:""});
     showNotif("Đã đăng ký giải: "+tour.name);
     try {
-      await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({tourRegs:JSON.stringify(updatedRegs)})});
+      await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({"tour_regs":JSON.stringify(updatedRegs)})});
     } catch(e){console.error(e);}
   };
 
@@ -584,7 +617,7 @@ export default function App(){
     if(activeTour?.id===tour.id) setActiveTour(updatedTour);
     if(showTourRegAdmin?.id===tour.id) setShowTourRegAdmin(updatedTour);
     showNotif("Đã duyệt đăng ký");
-    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({tourRegs:JSON.stringify(updatedRegs)})}); } catch(e){console.error(e);}
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({"tour_regs":JSON.stringify(updatedRegs)})}); } catch(e){console.error(e);}
   };
 
   const handleTourRegReject = async (tour, regId) => {
@@ -594,7 +627,7 @@ export default function App(){
     if(activeTour?.id===tour.id) setActiveTour(updatedTour);
     if(showTourRegAdmin?.id===tour.id) setShowTourRegAdmin(updatedTour);
     showNotif("Đã từ chối đăng ký","err");
-    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({tourRegs:JSON.stringify(updatedRegs)})}); } catch(e){console.error(e);}
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({"tour_regs":JSON.stringify(updatedRegs)})}); } catch(e){console.error(e);}
   };
 
   // ── Referee handlers ──
@@ -1309,8 +1342,14 @@ export default function App(){
                         </div>
 
                         {/* End/Delete row */}
-                        {(can("canManageTournament")&&isActive||can("canDeletePlayers"))&&(
+                        {(can("canManageTournament")||can("canDeletePlayers"))&&(
                           <div style={{display:"flex",gap:8,marginTop:8}}>
+                            {can("canManageTournament")&&(
+                              <button onClick={()=>setEditTourModal({tour,form:{name:tour.name,date:tour.date,format:tour.format,rounds:String(tour.rounds||1),note:tour.note||"",pin:tour.pin||"",bestOf:String(tour.bestOf||3)}})}
+                                style={{padding:"9px 12px",borderRadius:12,border:"1px solid rgba(255,180,71,0.35)",background:"rgba(255,180,71,0.1)",color:"#FFB347",cursor:"pointer",fontWeight:700,fontSize:12}}>
+                                ✏️
+                              </button>
+                            )}
                             {can("canManageTournament")&&isActive&&(
                               <button onClick={()=>handleEndTour(tour)}
                                 style={{flex:1,padding:"9px 0",borderRadius:12,border:"1px solid rgba(74,222,128,0.25)",background:"rgba(74,222,128,0.06)",color:"#4ADE80",fontWeight:700,cursor:"pointer",fontSize:12}}>
@@ -1331,12 +1370,7 @@ export default function App(){
                 })}
               </div>
             )}
-          </div>
-        )}
-
         {/* ════ TOUR REGISTRATION SECTION ════ */}
-        {tab==="tournament"&&(
-          <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
 
             {/* ── Public Registration Form ── */}
             <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+C.border,borderRadius:18}}>
@@ -1551,7 +1585,7 @@ export default function App(){
                 {label:"Ngày thi đấu *",node:<input value={tourForm.date} onChange={e=>setTourForm(f=>({...f,date:e.target.value}))} style={MS} type="date"/>},
                 {label:"Thể thức",node:(
                   <div style={{display:"flex",gap:8}}>
-                    {[["single","🎯 Đơn"],["double","👫 Đôi"],["team","👥 Đội"]].map(([v,l])=>(
+                    {[["single","🎯 Đơn"],["double","👫 Đôi"],["mixed","🔀 Hỗn hợp"]].map(([v,l])=>(
                       <button key={v} onClick={()=>setTourForm(f=>({...f,format:v}))} style={{flex:1,padding:"10px 6px",borderRadius:10,border:"1px solid",borderColor:tourForm.format===v?C.orange:"rgba(255,255,255,0.1)",background:tourForm.format===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:tourForm.format===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:12}}>{l}</button>
                     ))}
                   </div>
@@ -1575,6 +1609,51 @@ export default function App(){
               <div style={{display:"flex",gap:10,marginTop:18}}>
                 <button onClick={()=>setShowTourModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:600}}>Hủy</button>
                 <button onClick={handleCreateTour} disabled={!tourForm.name.trim()||!tourForm.date} style={{flex:2,background:(!tourForm.name.trim()||!tourForm.date)?"rgba(255,255,255,0.08)":"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:(!tourForm.name.trim()||!tourForm.date)?"#666":"#fff",borderRadius:12,padding:"12px",cursor:"pointer",fontSize:14,fontWeight:800}}>🏅 Tạo giải</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ════ EDIT TOUR MODAL ════ */}
+        {editTourModal&&can("canManageTournament")&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setEditTourModal(null)}>
+            <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,180,71,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
+              <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
+              <div style={{fontSize:16,fontWeight:800,color:"#FFB347",marginBottom:4}}>✏️ Chỉnh sửa giải đấu</div>
+              <div style={{fontSize:11,color:C.dim,marginBottom:18}}>{editTourModal.tour.name}</div>
+              {[
+                {label:"Tên giải *",node:<input value={editTourModal.form.name} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,name:e.target.value}}))} style={MS} placeholder="Tên giải đấu..."/>},
+                {label:"Ngày thi đấu *",node:<input value={editTourModal.form.date} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,date:e.target.value}}))} style={MS} type="date"/>},
+                {label:"Thể thức",node:(
+                  <div style={{display:"flex",gap:8}}>
+                    {[["single","🎯 Đơn"],["double","👫 Đôi"],["mixed","🔀 Hỗn hợp"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setEditTourModal(m=>({...m,form:{...m.form,format:v}}))} style={{flex:1,padding:"10px 6px",borderRadius:10,border:"1px solid",borderColor:editTourModal.form.format===v?"#FF6B35":"rgba(255,255,255,0.1)",background:editTourModal.form.format===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:editTourModal.form.format===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:12}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                )},
+                {label:"Số vòng đấu",node:<input value={editTourModal.form.rounds} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,rounds:e.target.value}}))} style={MS} type="number" min="1"/>},
+                {label:"Best of (số game/trận)",node:(
+                  <div style={{display:"flex",gap:6}}>
+                    {[["1","Bo1"],["3","Bo3"],["5","Bo5"]].map(([v,l])=>(
+                      <button key={v} onClick={()=>setEditTourModal(m=>({...m,form:{...m.form,bestOf:v}}))} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid",borderColor:editTourModal.form.bestOf===v?"#FF6B35":"rgba(255,255,255,0.1)",background:editTourModal.form.bestOf===v?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",color:editTourModal.form.bestOf===v?C.orange:C.muted,fontWeight:700,cursor:"pointer",fontSize:12}}>
+                        {l}
+                      </button>
+                    ))}
+                  </div>
+                )},
+                {label:"Mã PIN trọng tài",node:<input value={editTourModal.form.pin} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,pin:e.target.value}}))} style={MS} placeholder="Giữ nguyên nếu không đổi..."/>},
+                {label:"Ghi chú (tuỳ chọn)",node:<input value={editTourModal.form.note} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,note:e.target.value}}))} style={MS} placeholder="Ghi chú về giải đấu..."/>},
+              ].map(({label,node},i)=>(
+                <div key={i} style={{marginBottom:12}}>
+                  <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>{label}</label>
+                  {node}
+                </div>
+              ))}
+              <div style={{display:"flex",gap:10,marginTop:18}}>
+                <button onClick={()=>setEditTourModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:12,padding:"13px",cursor:"pointer",fontWeight:700,fontSize:14}}>Huỷ</button>
+                <button onClick={handleUpdateTour} disabled={!editTourModal.form.name.trim()||!editTourModal.form.date} style={{flex:2,background:(!editTourModal.form.name.trim()||!editTourModal.form.date)?"rgba(255,255,255,0.06)":"linear-gradient(90deg,#FFB347,#FF8C5A)",border:"none",color:(!editTourModal.form.name.trim()||!editTourModal.form.date)?"#4B5563":"#fff",borderRadius:12,padding:"13px",cursor:(!editTourModal.form.name.trim()||!editTourModal.form.date)?"default":"pointer",fontWeight:800,fontSize:14}}>💾 Lưu thay đổi</button>
               </div>
             </div>
           </div>
@@ -1691,10 +1770,16 @@ export default function App(){
                   <div style={{fontSize:16,fontWeight:800,color:"#FFB347",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
                   <div style={{fontSize:11,color:C.dim,display:"flex",gap:8,flexWrap:"wrap",marginTop:2}}>
                     <span>📅 {viewTour.date}</span>
-                    <span>🎮 {viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Đội"}</span>
+                    <span>🎮 {viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Hỗn hợp"}</span>
                     <span style={{color:viewTour.status==="active"?"#4ADE80":"#6B7280"}}>{viewTour.status==="active"?"● Đang diễn ra":"✓ Kết thúc"}</span>
                   </div>
                 </div>
+                {can("canManageTournament")&&(
+                  <button onClick={()=>setEditTourModal({tour:viewTour,form:{name:viewTour.name,date:viewTour.date,format:viewTour.format,rounds:String(viewTour.rounds||1),note:viewTour.note||"",pin:viewTour.pin||"",bestOf:String(viewTour.bestOf||3)}})}
+                    style={{background:"rgba(255,180,71,0.12)",border:"1px solid rgba(255,180,71,0.35)",color:"#FFB347",borderRadius:10,padding:"8px 12px",cursor:"pointer",fontSize:16,flexShrink:0}}>
+                    ✏️
+                  </button>
+                )}
               </div>
               {can("canManageTournament")&&viewTour.status==="active"&&(
                 <button onClick={()=>{setActiveTour(viewTour);setViewTour(null);setShowMatchModal(true);}}
