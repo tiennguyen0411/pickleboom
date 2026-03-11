@@ -151,7 +151,7 @@ const MS = {
 
 // ─── Supabase config ───────────────────────────────────────────────────────
 const SB_URL = "https://oevgauxkildxdrqnphnw.supabase.co";
-const SB_KEY = "sb_publishable_rG83Er1StQyQr3bk3eX6jQ_vVcSUs3f";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ldmdhdXhraWxkeGRycW5waG53Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMxMzYzOTUsImV4cCI6MjA4ODcxMjM5NX0.SMw09iIB6-3kaEjzXrxF7tP8DsN375linNZPxX1B2kc";
 
 const sbFetch = async (path, options={}) => {
   const res = await fetch(`${SB_URL}/rest/v1/${path}`, {
