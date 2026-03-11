@@ -147,7 +147,7 @@ function SectionTitle({children}){
 // Modal input shared style
 const MS = {
   width:"100%",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,107,53,0.25)",
-  borderRadius:10,padding:"11px 14px",color:"#E5E7EB",fontSize:15,outline:"none",boxSizing:"border-box",
+  borderRadius:10,padding:"11px 14px",color:"#E5E7EB",fontSize:16,outline:"none",boxSizing:"border-box",
 };
 
 // ─── Supabase config ───────────────────────────────────────────────────────
@@ -235,6 +235,7 @@ export default function App(){
   const [tourRegSubmitted,setTourRegSubmitted]=useState(false);
   const [playerSearch,setPlayerSearch]=useState("");
   const [showPlayerPicker,setShowPlayerPicker]=useState(false);
+  const [pickerTarget,setPickerTarget]=useState("playerName");
   const [showTourRegAdmin,setShowTourRegAdmin]=useState(null); // tourId being managed
   // ── Referee mode state ──
   const [refMode,setRefMode]=useState(false); // fullscreen referee UI
@@ -350,7 +351,7 @@ export default function App(){
     }
     else setAuth(a=>({...a,err:"Sai tên đăng nhập hoặc mật khẩu"}));
   };
-  const handleLogout=()=>{sessionStorage.removeItem("pb_auth");setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});showNotif("Đã đăng xuất");};
+  const handleLogout=()=>{sessionStorage.removeItem("pb_auth");setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});if(["roles","adjust"].includes(tab))setTab("dashboard");showNotif("Đã đăng xuất");};
 
   const handleRegister=async()=>{
     if(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())return;
@@ -646,8 +647,8 @@ export default function App(){
     {key:"players",icon:"👥",label:"VĐV"},
     {key:"ranking",icon:"🏆",label:"Xếp hạng"},
     {key:"tournament",icon:"🏅",label:"Giải đấu"},
-    {key:"roles",icon:"🔐",label:"Phân quyền"},
-    {key:"adjust",icon:"⚡",label:"Điều chỉnh"},
+    {key:"roles",icon:"🔐",label:"Phân quyền",adminOnly:true},
+    {key:"adjust",icon:"⚡",label:"Điều chỉnh",adminOnly:true},
     {key:"register",icon:"📝",label:"Đăng ký"},
     {key:"history",icon:"📋",label:"Lịch sử"},
     {key:"rules",icon:"📜",label:"Quy định"},
@@ -655,22 +656,41 @@ export default function App(){
 
   // ─── RENDER ────────────────────────────────────────────────────────────────
   useEffect(()=>{
+    // Ensure proper viewport meta for mobile
+    if(!document.querySelector('meta[name="viewport"]')){
+      const vm=document.createElement("meta");
+      vm.name="viewport";
+      vm.content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover";
+      document.head.appendChild(vm);
+    }
     const el=document.createElement("style");
-    el.textContent="@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}";
+    el.textContent=`
+      *,*::before,*::after{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+      html,body{margin:0;padding:0;overflow-x:hidden;-webkit-text-size-adjust:100%;}
+      body{overscroll-behavior-y:contain;}
+      input,select,textarea,button{font-family:inherit;-webkit-appearance:none;appearance:none;}
+      select{-webkit-appearance:none;appearance:none;}
+      ::-webkit-scrollbar{width:4px;height:4px;}
+      ::-webkit-scrollbar-track{background:transparent;}
+      ::-webkit-scrollbar-thumb{background:rgba(255,107,53,0.3);border-radius:4px;}
+      @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+      @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+    `;
     document.head.appendChild(el);
     return()=>document.head.removeChild(el);
   },[]);
 
   return (
     <>
-    <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#111 0%,#181818 60%,#222 100%)",color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden"}}>
+    <div style={{minHeight:"100dvh",background:"linear-gradient(160deg,#111 0%,#181818 60%,#222 100%)",color:C.text,fontFamily:"'Segoe UI',system-ui,sans-serif",overflowX:"hidden",WebkitOverflowScrolling:"touch"}}>
       {/* Ambient glows */}
       <div style={{position:"fixed",top:-150,left:-150,width:400,height:400,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,107,53,0.09) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"fixed",bottom:-120,right:-120,width:350,height:350,borderRadius:"50%",background:"radial-gradient(circle,rgba(255,180,71,0.07) 0%,transparent 70%)",pointerEvents:"none",zIndex:0}}/>
 
       {/* ── TOP HEADER ── */}
-      <header style={{background:"rgba(13,13,13,0.97)",borderBottom:"1px solid "+C.border,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.6)"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 16px",maxWidth:900,margin:"0 auto"}}>
+      <header style={{background:"rgba(13,13,13,0.97)",borderBottom:"1px solid "+C.border,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 20px rgba(0,0,0,0.6)",paddingTop:"env(safe-area-inset-top,0px)"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",maxWidth:900,margin:"0 auto",gap:8,minWidth:0}}>
           {/* Logo */}
           <div style={{display:"flex",alignItems:"center",gap:10}}>
             <span style={{fontSize:26,filter:"drop-shadow(0 0 10px rgba(255,107,53,0.7))"}}>🏓</span>
@@ -682,12 +702,12 @@ export default function App(){
           {/* Auth */}
           {isAdmin?(
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:10,color:ROLE_PERMISSIONS[userRole]?.color||"#FF6B35",fontWeight:700}}>{ROLE_PERMISSIONS[userRole]?.badge||"🔐"} {auth.user.label}</div>
+              <div style={{textAlign:"right",minWidth:0,overflow:"hidden"}}>
+                <div style={{fontSize:10,color:ROLE_PERMISSIONS[userRole]?.color||"#FF6B35",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{ROLE_PERMISSIONS[userRole]?.badge||"🔐"} {auth.user.label}</div>
                 <div style={{fontSize:9,color:C.dim}}>Admin</div>
               </div>
               <button onClick={handleLogout} style={{background:"rgba(239,68,68,0.15)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}}>Đăng xuất</button>
-              <button onClick={()=>{if(can("canResetData")&&window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontWeight:700}} title="Reset dữ liệu gốc">↺</button>
+              <button onClick={()=>{if(can("canResetData")&&window.confirm("Reset toàn bộ dữ liệu về mặc định?"))handleResetData();}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.dim,borderRadius:8,padding:"6px 8px",cursor:"pointer",fontSize:13,fontWeight:700,flexShrink:0}} title="Reset dữ liệu gốc">↺</button>
             </div>
           ):(
 <div style={{display:"flex",gap:6}}>
@@ -704,11 +724,11 @@ export default function App(){
 
       {/* ── SYNCING / RELOAD ── */}
       {syncing?(
-        <div style={{position:"fixed",top:56,left:"50%",transform:"translateX(-50%)",zIndex:299,padding:"6px 16px",borderRadius:20,background:"rgba(255,107,53,0.15)",border:"1px solid rgba(255,107,53,0.3)",fontSize:11,color:"#FF6B35",fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+        <div style={{position:"fixed",top:"calc(56px + env(safe-area-inset-top,0px))",left:"50%",transform:"translateX(-50%)",zIndex:299,padding:"6px 16px",borderRadius:20,background:"rgba(255,107,53,0.15)",border:"1px solid rgba(255,107,53,0.3)",fontSize:11,color:"#FF6B35",fontWeight:600,display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
           <span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Đang đồng bộ...
         </div>
       ):(
-        <div style={{position:"fixed",top:56,right:12,zIndex:299}}>
+        <div style={{position:"fixed",top:"calc(56px + env(safe-area-inset-top,0px))",right:12,zIndex:299}}>
           <button onClick={loadFromDB} title="Tải lại dữ liệu từ server" style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:20,padding:"5px 12px",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:5}}>
             🔄 Tải lại
           </button>
@@ -717,13 +737,13 @@ export default function App(){
 
       {/* ── NOTIFICATION ── */}
       {notif&&(
-        <div style={{position:"fixed",top:64,left:"50%",transform:"translateX(-50%)",zIndex:300,padding:"10px 20px",borderRadius:20,color:"#fff",fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.5)",background:notif.type==="ok"?"#FF6B35":"#EF4444",whiteSpace:"nowrap",maxWidth:"90vw",textAlign:"center"}}>
+        <div style={{position:"fixed",top:"calc(64px + env(safe-area-inset-top,0px))",left:"50%",transform:"translateX(-50%)",zIndex:300,padding:"10px 20px",borderRadius:20,color:"#fff",fontSize:13,fontWeight:600,boxShadow:"0 8px 24px rgba(0,0,0,0.5)",background:notif.type==="ok"?"#FF6B35":"#EF4444",whiteSpace:"nowrap",maxWidth:"calc(100vw - 32px)",textAlign:"center",animation:"fadeIn 0.2s ease"}}>
           {notif.type==="ok"?"✓":"✗"} {notif.msg}
         </div>
       )}
 
       {/* ── MAIN CONTENT ── */}
-      <main style={{maxWidth:900,margin:"0 auto",padding:"16px 12px 90px",position:"relative",zIndex:1}}>
+      <main style={{maxWidth:900,margin:"0 auto",padding:"16px 12px calc(80px + env(safe-area-inset-bottom,0px))",position:"relative",zIndex:1}}>
 
         {/* ════ DASHBOARD ════ */}
         {tab==="dashboard"&&(
@@ -731,7 +751,7 @@ export default function App(){
             <div style={{fontSize:18,fontWeight:800,color:C.orange}}>Tổng quan CLB</div>
 
             {/* Stats 2x2 grid */}
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,width:"100%"}}>
               {[
                 {label:"Tổng VĐV",value:stats.total,icon:"👥",color:"#FF6B35"},
                 {label:"Điểm TB",value:stats.avg,icon:"⭐",color:"#FFB347"},
@@ -806,14 +826,16 @@ export default function App(){
             {/* Filters */}
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               <input placeholder="🔍 Tìm tên..." value={search} onChange={e=>setSearch(e.target.value)}
-                style={{flex:1,minWidth:140,background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 12px",color:C.text,fontSize:14,outline:"none"}}/>
-              <select value={filterGender} onChange={e=>setFilterGender(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
-                <option value="all">Tất cả</option><option value="male">Nam</option><option value="female">Nữ</option>
-              </select>
-              <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} style={{background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"10px 10px",color:C.text,fontSize:12,outline:"none",cursor:"pointer"}}>
-                <option value="all">Mọi Tier</option>
-                {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
-              </select>
+                style={{flex:"1 1 140px",minWidth:0,background:"rgba(255,255,255,0.05)",border:"1px solid "+C.border,borderRadius:10,padding:"11px 12px",color:C.text,fontSize:16,outline:"none"}}/>
+              <div style={{display:"flex",gap:8,flex:"0 0 auto"}}>
+                <select value={filterGender} onChange={e=>setFilterGender(e.target.value)} style={{background:"rgba(255,255,255,0.07)",border:"1px solid "+C.border,borderRadius:10,padding:"11px 10px",color:C.text,fontSize:16,outline:"none",cursor:"pointer"}}>
+                  <option value="all">Tất cả</option><option value="male">Nam</option><option value="female">Nữ</option>
+                </select>
+                <select value={filterTier} onChange={e=>setFilterTier(e.target.value)} style={{background:"rgba(255,255,255,0.07)",border:"1px solid "+C.border,borderRadius:10,padding:"11px 10px",color:C.text,fontSize:16,outline:"none",cursor:"pointer"}}>
+                  <option value="all">Mọi Tier</option>
+                  {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
             </div>
 
             {/* Player cards — mobile-friendly, no table */}
@@ -839,7 +861,7 @@ export default function App(){
                       <div style={{display:"flex",alignItems:"center",gap:6,marginTop:4}}>
                         {can("canEditPlayers")?(
                           <select value={p.tier} onChange={e=>handleTierChange(p,e.target.value)}
-                            style={{background:"transparent",border:"1px solid "+TIER_COLORS[p.tier]+"66",borderRadius:8,padding:"2px 6px",fontSize:11,fontWeight:800,cursor:"pointer",outline:"none",color:TIER_COLORS[p.tier]}}>
+                            style={{background:"transparent",border:"1px solid "+TIER_COLORS[p.tier]+"66",borderRadius:8,padding:"4px 6px",fontSize:16,fontWeight:800,cursor:"pointer",outline:"none",color:TIER_COLORS[p.tier]}}>
                             {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
                           </select>
                         ):(
@@ -1233,7 +1255,7 @@ export default function App(){
                   const confirmed=(tour.matches||[]).filter(m=>m.confirmed).length;
                   const isActive=tour.status==="active";
                   return(
-                    <div key={tour.id} style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+(isActive?"rgba(74,222,128,0.2)":C.border),borderRadius:18,overflow:"hidden"}}>
+                    <div key={tour.id} style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+(isActive?"rgba(74,222,128,0.2)":C.border),borderRadius:18}}>
                       {/* Top strip */}
                       {isActive&&<div style={{height:3,background:"linear-gradient(90deg,#4ADE80,#22C55E)"}}/>}
 
@@ -1317,7 +1339,7 @@ export default function App(){
           <div style={{display:"flex",flexDirection:"column",gap:10,marginTop:4}}>
 
             {/* ── Public Registration Form ── */}
-            <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+C.border,borderRadius:18,overflow:"hidden"}}>
+            <div style={{background:"rgba(255,255,255,0.028)",border:"1px solid "+C.border,borderRadius:18}}>
               <div style={{padding:"14px 16px 0"}}>
                 <div style={{fontSize:14,fontWeight:800,color:C.orange,marginBottom:2}}>📋 Đăng ký tham gia giải</div>
                 <div style={{fontSize:11,color:C.dim,marginBottom:12}}>Điền thông tin để đăng ký — Ban tổ chức sẽ duyệt đơn</div>
@@ -1340,30 +1362,24 @@ export default function App(){
                   <div style={{position:"relative"}}>
                     <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên vận động viên *</label>
                     {/* Selected display / trigger */}
-                    {tourRegForm.playerName?(
-                      <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(255,107,53,0.08)",border:"1px solid rgba(255,107,53,0.4)",borderRadius:10,cursor:"pointer"}}
-                        onClick={()=>{setShowPlayerPicker(true);setPlayerSearch("");}}>
-                        {(()=>{
-                          const _pm=players.male.find(x=>x.name===tourRegForm.playerName); const _pf=players.female.find(x=>x.name===tourRegForm.playerName); const p=_pm?{..._pm,gender:"male"}:_pf?{..._pf,gender:"female"}:null;
-                          return p?(
-                            <>
-                              <span style={{fontSize:16}}>{p.gender==="male"?"♂":"♀"}</span>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{p.name}</div>
-                                <div style={{fontSize:11,color:C.muted}}>Tier {p.tier} · {p.boom?.toFixed(2)} pts</div>
-                              </div>
-                              <span style={{fontSize:11,color:C.orange,fontWeight:600}}>Đổi ▼</span>
-                            </>
-                          ):null;
-                        })()}
-                      </div>
-                    ):(
-                      <div onClick={()=>{setShowPlayerPicker(true);setPlayerSearch("");}}
-                        style={{padding:"11px 14px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,107,53,0.25)",borderRadius:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                        <span style={{color:C.dim,fontSize:14}}>-- Chọn vận động viên --</span>
-                        <span style={{color:C.dim}}>▼</span>
-                      </div>
-                    )}
+                    <div onClick={()=>{setPickerTarget("playerName");setShowPlayerPicker(true);setPlayerSearch("");}}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:tourRegForm.playerName?"rgba(255,107,53,0.08)":"rgba(255,255,255,0.06)",border:"1px solid "+(tourRegForm.playerName?"rgba(255,107,53,0.4)":"rgba(255,107,53,0.25)"),borderRadius:10,cursor:"pointer"}}>
+                      {tourRegForm.playerName?(
+                        <>
+                          <span style={{fontSize:16,flexShrink:0}}>{players.male.find(x=>x.name===tourRegForm.playerName)?"♂":"♀"}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tourRegForm.playerName}</div>
+                            <div style={{fontSize:11,color:C.muted}}>{(players.male.find(x=>x.name===tourRegForm.playerName)||players.female.find(x=>x.name===tourRegForm.playerName))?.tier||""}</div>
+                          </div>
+                          <span style={{fontSize:11,color:C.orange,fontWeight:600,flexShrink:0}}>Đổi ▼</span>
+                        </>
+                      ):(
+                        <>
+                          <span style={{color:C.dim,fontSize:14,flex:1}}>-- Chọn vận động viên --</span>
+                          <span style={{color:C.dim}}>▼</span>
+                        </>
+                      )}
+                    </div>
                   </div>
                   {/* Nội dung */}
                   <div>
@@ -1384,7 +1400,24 @@ export default function App(){
                   {(tourRegForm.content==="double"||tourRegForm.content==="mixed")&&(
                     <div>
                       <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên đối tác (đôi)</label>
-                      <input value={tourRegForm.partner} onChange={e=>setTourRegForm(f=>({...f,partner:e.target.value}))} style={MS} placeholder="Tên VĐV đối tác..."/>
+                      <div onClick={()=>{setPickerTarget("partner");setShowPlayerPicker(true);setPlayerSearch("");}}
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:tourRegForm.partner?"rgba(255,107,53,0.08)":"rgba(255,255,255,0.06)",border:"1px solid "+(tourRegForm.partner?"rgba(255,107,53,0.4)":"rgba(255,107,53,0.2)"),borderRadius:10,cursor:"pointer"}}>
+                        {tourRegForm.partner?(
+                          <>
+                            <span style={{fontSize:16,flexShrink:0}}>{players.male.find(x=>x.name===tourRegForm.partner)?"♂":"♀"}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tourRegForm.partner}</div>
+                              <div style={{fontSize:11,color:C.muted}}>{(players.male.find(x=>x.name===tourRegForm.partner)||players.female.find(x=>x.name===tourRegForm.partner))?.tier||""}</div>
+                            </div>
+                            <span style={{fontSize:11,color:C.orange,fontWeight:600,flexShrink:0}}>Đổi ▼</span>
+                          </>
+                        ):(
+                          <>
+                            <span style={{color:C.dim,fontSize:14,flex:1}}>-- Chọn VĐV đối tác --</span>
+                            <span style={{color:C.dim}}>▼</span>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                   {/* Liên hệ */}
@@ -1510,7 +1543,7 @@ export default function App(){
         {/* ════ CREATE TOURNAMENT MODAL ════ */}
         {showTourModal&&can("canCreateTournament")&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowTourModal(false)}>
-            <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+            <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",animation:"slideUp 0.25s ease",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
               <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
               <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:18}}>🏅 Tạo giải đấu mới</div>
               {[
@@ -1560,13 +1593,13 @@ export default function App(){
             </div>
 
             {/* Body */}
-            <div style={{flex:1,overflowY:"auto",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"16px",display:"flex",flexDirection:"column",gap:14}}>
 
               {/* Round */}
               <div style={{display:"flex",alignItems:"center",gap:10,background:"rgba(255,255,255,0.03)",borderRadius:12,padding:"12px 14px",border:"1px solid rgba(255,255,255,0.07)"}}>
                 <span style={{fontSize:13,color:C.muted,fontWeight:600}}>Vòng đấu:</span>
                 <input value={matchForm.round} onChange={e=>setMatchForm(f=>({...f,round:e.target.value}))}
-                  style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:8,padding:"8px 12px",color:C.text,fontSize:15,fontWeight:700,outline:"none",width:60}}
+                  style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(96,165,250,0.25)",borderRadius:8,padding:"8px 12px",color:C.text,fontSize:16,fontWeight:700,outline:"none",width:60}}
                   type="number" min="1"/>
               </div>
 
@@ -1593,7 +1626,7 @@ export default function App(){
               {/* Team 1 */}
               <div style={{background:"rgba(255,107,53,0.04)",borderRadius:14,padding:"14px",border:"1px solid rgba(255,107,53,0.12)"}}>
                 <div style={{fontSize:12,color:C.orange,fontWeight:800,marginBottom:10}}>🔴 ĐỘI 1</div>
-                <select value={matchForm.p1} onChange={e=>setMatchForm(f=>({...f,p1:e.target.value}))} style={{...MS,marginBottom:10}}>
+                <select value={matchForm.p1} onChange={e=>setMatchForm(f=>({...f,p1:e.target.value}))} style={{...MS,marginBottom:10,fontSize:16,WebkitAppearance:"none"}}>
                   <option value="">-- Chọn VĐV --</option>
                   {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                     <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
@@ -1612,7 +1645,7 @@ export default function App(){
               {/* Team 2 */}
               <div style={{background:"rgba(96,165,250,0.04)",borderRadius:14,padding:"14px",border:"1px solid rgba(96,165,250,0.12)"}}>
                 <div style={{fontSize:12,color:"#60A5FA",fontWeight:800,marginBottom:10}}>🔵 ĐỘI 2</div>
-                <select value={matchForm.p3} onChange={e=>setMatchForm(f=>({...f,p3:e.target.value}))} style={{...MS,marginBottom:10}}>
+                <select value={matchForm.p3} onChange={e=>setMatchForm(f=>({...f,p3:e.target.value}))} style={{...MS,marginBottom:10,fontSize:16,WebkitAppearance:"none"}}>
                   <option value="">-- Chọn VĐV --</option>
                   {[...players.male.map(p=>({...p,gender:"male"})),...players.female.map(p=>({...p,gender:"female"}))].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
                     <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | {p.tier}</option>
@@ -1672,7 +1705,7 @@ export default function App(){
             </div>
 
             {/* Scrollable body */}
-            <div style={{flex:1,overflowY:"auto",padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+            <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
 
               {/* Leaderboard */}
               {(()=>{
@@ -1782,7 +1815,7 @@ export default function App(){
 
       {/* ── Player Picker Modal ── */}
       {showPlayerPicker&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:600,display:"flex",flexDirection:"column"}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.97)",zIndex:600,display:"flex",flexDirection:"column",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
           {/* Header */}
           <div style={{background:"#181818",borderBottom:"1px solid rgba(255,107,53,0.2)",padding:"14px 16px",flexShrink:0}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
@@ -1799,12 +1832,12 @@ export default function App(){
                 value={playerSearch}
                 onChange={e=>setPlayerSearch(e.target.value)}
                 placeholder="Tìm tên VĐV..."
-                style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:10,padding:"11px 14px 11px 38px",color:C.text,fontSize:15,outline:"none",boxSizing:"border-box"}}
+                style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:10,padding:"11px 14px 11px 38px",color:C.text,fontSize:16,outline:"none",boxSizing:"border-box"}}
               />
             </div>
           </div>
           {/* Player list */}
-          <div style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
+          <div style={{flex:1,overflowY:"auto",WebkitOverflowScrolling:"touch",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
             {(()=>{
               const allPlayers=[
                 ...players.male.map(p=>({...p,gender:"male"})),
@@ -1823,10 +1856,10 @@ export default function App(){
                   <div style={{fontSize:10,color:color,fontWeight:800,letterSpacing:1,padding:"8px 4px 4px",textTransform:"uppercase"}}>{label} ({list.length})</div>
                   {list.map(p=>(
                     <div key={p.id}
-                      onClick={()=>{setTourRegForm(f=>({...f,playerName:p.name}));setShowPlayerPicker(false);setPlayerSearch("");}}
+                      onClick={()=>{setTourRegForm(f=>({...f,[pickerTarget]:p.name}));setShowPlayerPicker(false);setPlayerSearch("");}}
                       style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:12,marginBottom:4,cursor:"pointer",
-                        background:tourRegForm.playerName===p.name?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",
-                        border:"1px solid "+(tourRegForm.playerName===p.name?"rgba(255,107,53,0.4)":"rgba(255,255,255,0.07)")}}>
+                        background:tourRegForm[pickerTarget]===p.name?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",
+                        border:"1px solid "+(tourRegForm[pickerTarget]===p.name?"rgba(255,107,53,0.4)":"rgba(255,255,255,0.07)")}}>
                       <div style={{width:38,height:38,borderRadius:10,background:TIER_COLORS[p.tier]+"22",border:"1px solid "+TIER_COLORS[p.tier]+"44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         <span style={{fontSize:13,fontWeight:800,color:TIER_COLORS[p.tier]}}>{p.tier}</span>
                       </div>
@@ -1855,13 +1888,13 @@ export default function App(){
       </main>
 
       {/* ── BOTTOM NAV (mobile-first) ── */}
-      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(13,13,13,0.97)",borderTop:"1px solid "+C.border,display:"flex",zIndex:100,paddingBottom:0,boxShadow:"0 -4px 24px rgba(0,0,0,0.5)"}}>
-        {NAV.map(t=>(
+      <nav style={{position:"fixed",bottom:0,left:0,right:0,background:"rgba(13,13,13,0.97)",borderTop:"1px solid "+C.border,display:"flex",zIndex:100,paddingBottom:"env(safe-area-inset-bottom,0px)",boxShadow:"0 -4px 24px rgba(0,0,0,0.5)"}}>
+        {NAV.filter(t=>!t.adminOnly||isAdmin).map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"8px 2px 6px",border:"none",background:"transparent",cursor:"pointer",color:tab===t.key?C.orange:C.dim,transition:"all 0.2s",position:"relative"}}>
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"10px 2px 7px",border:"none",background:"transparent",cursor:"pointer",color:tab===t.key?C.orange:C.dim,transition:"color 0.2s",position:"relative",minHeight:52}}>
             {tab===t.key&&<div style={{position:"absolute",top:0,left:"25%",right:"25%",height:2,background:C.orange,borderRadius:2}}/>}
             <span style={{fontSize:18,lineHeight:1}}>{t.icon}</span>
-            <span style={{fontSize:9,fontWeight:tab===t.key?700:500,letterSpacing:0.3,whiteSpace:"nowrap"}}>{t.label}</span>
+            <span style={{fontSize:"clamp(8px,2.2vw,10px)",fontWeight:tab===t.key?700:500,letterSpacing:0.2,whiteSpace:"nowrap"}}>{t.label}</span>
           </button>
         ))}
       </nav>
@@ -1869,7 +1902,7 @@ export default function App(){
       {/* ── ADD PLAYER MODAL ── */}
       {showAddModal&&can("canAddPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setShowAddModal(false)}>
-          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",animation:"slideUp 0.25s ease",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:18}}>➕ Thêm VĐV mới</div>
             {[
@@ -1894,7 +1927,7 @@ export default function App(){
       {/* ── ADJUST MODAL ── */}
       {adjModal&&can("canAdjustScore")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setAdjModal(null)}>
-          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",animation:"slideUp 0.25s ease",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:C.orange,marginBottom:14}}>⚡ Điều chỉnh điểm</div>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,padding:"12px 14px",background:"rgba(255,107,53,0.08)",borderRadius:12}}>
@@ -1920,7 +1953,7 @@ export default function App(){
               {label:"Ghi chú",node:<input value={adjForm.note} onChange={e=>setAdjForm(f=>({...f,note:e.target.value}))} style={MS} placeholder="Tùy chọn..."/>},
             ].map(({label,node},i)=>(
               <div key={i} style={{marginBottom:12}}>
-                <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>{label}</label>
+                <label style={{fontSize:16,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>{label}</label>
                 {node}
               </div>
             ))}
@@ -1939,7 +1972,7 @@ export default function App(){
       {/* ── LOGIN MODAL ── */}
       {auth.showLogin&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setAuth(a=>({...a,showLogin:false,err:""}))}>
-          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(255,107,53,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",animation:"slideUp 0.25s ease",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{textAlign:"center",marginBottom:22}}>
               <div style={{fontSize:36,marginBottom:8}}>🔐</div>
@@ -1948,13 +1981,11 @@ export default function App(){
             </div>
             <div style={{marginBottom:12}}>
               <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên đăng nhập</label>
-              <input value={auth.u} onChange={e=>setAuth(a=>({...a,u:e.target.value,err:""}))}
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()} style={MS} placeholder="Nhập tên đăng nhập..."/>
+              <input value={auth.u} onChange={e=>setAuth(a=>({...a,u:e.target.value,err:""}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} style={{...MS,fontSize:16}} placeholder="Nhập tên đăng nhập..."/>
             </div>
             <div style={{marginBottom:12}}>
               <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Mật khẩu</label>
-              <input type="password" value={auth.p} onChange={e=>setAuth(a=>({...a,p:e.target.value,err:""}))}
-                onKeyDown={e=>e.key==="Enter"&&handleLogin()} style={MS} placeholder="Nhập mật khẩu..."/>
+              <input type="password" value={auth.p} onChange={e=>setAuth(a=>({...a,p:e.target.value,err:""}))} onKeyDown={e=>e.key==="Enter"&&handleLogin()} style={{...MS,fontSize:16}} placeholder="Nhập mật khẩu..."/>
             </div>
             {auth.err&&(
               <div style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#EF4444",marginBottom:12,textAlign:"center"}}>✕ {auth.err}</div>
@@ -1971,7 +2002,7 @@ export default function App(){
       {/* ── EDIT PLAYER MODAL ── */}
       {editModal&&can("canEditPlayers")&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:400,backdropFilter:"blur(6px)"}} onClick={()=>setEditModal(null)}>
-          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)"}} onClick={e=>e.stopPropagation()}>
+          <div style={{background:"linear-gradient(145deg,#181818,#222)",border:"1px solid rgba(96,165,250,0.35)",borderRadius:"20px 20px 0 0",padding:"24px 20px calc(36px + env(safe-area-inset-bottom,0px))",width:"100%",maxWidth:520,boxShadow:"0 -16px 40px rgba(0,0,0,0.7)",animation:"slideUp 0.25s ease",maxHeight:"90vh",overflowY:"auto",WebkitOverflowScrolling:"touch"}} onClick={e=>e.stopPropagation()}>
             <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 20px"}}/>
             <div style={{fontSize:16,fontWeight:800,color:"#60A5FA",marginBottom:18}}>✏️ Sửa thông tin VĐV</div>
             <div style={{padding:"10px 14px",background:"rgba(96,165,250,0.08)",borderRadius:10,marginBottom:16,fontSize:13,color:C.muted}}>
@@ -1999,7 +2030,7 @@ export default function App(){
       {/* ── DELETE CONFIRM MODAL ── */}
       {/* ══════════════ REFEREE FULLSCREEN MODE ══════════════ */}
       {refMode&&(
-        <div style={{position:"fixed",inset:0,background:"#0a0a0a",zIndex:500,display:"flex",flexDirection:"column",overflowY:"auto"}}>
+        <div style={{position:"fixed",inset:0,background:"#0a0a0a",zIndex:500,display:"flex",flexDirection:"column",overflowY:"auto",WebkitOverflowScrolling:"touch",paddingBottom:"env(safe-area-inset-bottom,0px)"}}>
 
           {/* Header */}
           <div style={{background:"rgba(96,165,250,0.12)",borderBottom:"1px solid rgba(96,165,250,0.25)",padding:"14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
@@ -2067,7 +2098,7 @@ export default function App(){
                       </div>
                     ))}
                   </div>
-                  <div style={{maxHeight:320,overflowY:"auto",display:"flex",flexDirection:"column",gap:6}}>
+                  <div style={{maxHeight:320,overflowY:"auto",WebkitOverflowScrolling:"touch",display:"flex",flexDirection:"column",gap:6}}>
                     {allP.filter(p=>!t1.includes(p.name)&&!t2.includes(p.name)).map(p=>{
                       const t1Full=t1.length>=maxT, t2Full=t2.length>=maxT;
                       return(
