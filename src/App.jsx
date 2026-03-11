@@ -233,6 +233,8 @@ export default function App(){
   const [playerHistoryView,setPlayerHistoryView]=useState(null);
   const [tourRegForm,setTourRegForm]=useState({tourId:"",playerName:"",contact:"",content:"single",partner:"",note:""});
   const [tourRegSubmitted,setTourRegSubmitted]=useState(false);
+  const [playerSearch,setPlayerSearch]=useState("");
+  const [showPlayerPicker,setShowPlayerPicker]=useState(false);
   const [showTourRegAdmin,setShowTourRegAdmin]=useState(null); // tourId being managed
   // ── Referee mode state ──
   const [refMode,setRefMode]=useState(false); // fullscreen referee UI
@@ -1334,15 +1336,106 @@ export default function App(){
                       ))}
                     </select>
                   </div>
-                  {/* Tên VĐV */}
-                  <div>
+                  {/* Tên VĐV - Searchable Picker */}
+                  <div style={{position:"relative"}}>
                     <label style={{fontSize:10,color:C.muted,fontWeight:700,letterSpacing:0.5,display:"block",marginBottom:5,textTransform:"uppercase"}}>Tên vận động viên *</label>
-                    <select value={tourRegForm.playerName} onChange={e=>setTourRegForm(f=>({...f,playerName:e.target.value}))} style={MS}>
-                      <option value="">-- Chọn VĐV --</option>
-                      {[...players.male,...players.female].sort((a,b)=>a.name.localeCompare(b.name,"vi")).map(p=>(
-                        <option key={p.id} value={p.name}>{p.gender==="male"?"♂":"♀"} {p.name} | Tier {p.tier}</option>
-                      ))}
-                    </select>
+                    {/* Selected display / trigger */}
+                    {tourRegForm.playerName?(
+                      <div style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",background:"rgba(255,107,53,0.08)",border:"1px solid rgba(255,107,53,0.4)",borderRadius:10,cursor:"pointer"}}
+                        onClick={()=>{setShowPlayerPicker(true);setPlayerSearch("");}}>
+                        {(()=>{
+                          const p=[...players.male,...players.female].find(x=>x.name===tourRegForm.playerName);
+                          return p?(
+                            <>
+                              <span style={{fontSize:16}}>{p.gender==="male"?"♂":"♀"}</span>
+                              <div style={{flex:1}}>
+                                <div style={{fontSize:14,fontWeight:700,color:C.text}}>{p.name}</div>
+                                <div style={{fontSize:11,color:C.muted}}>Tier {p.tier} · {p.boom?.toFixed(2)} pts</div>
+                              </div>
+                              <span style={{fontSize:11,color:C.orange,fontWeight:600}}>Đổi ▼</span>
+                            </>
+                          ):null;
+                        })()}
+                      </div>
+                    ):(
+                      <div onClick={()=>{setShowPlayerPicker(true);setPlayerSearch("");}}
+                        style={{padding:"11px 14px",background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,107,53,0.25)",borderRadius:10,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <span style={{color:C.dim,fontSize:14}}>-- Chọn vận động viên --</span>
+                        <span style={{color:C.dim}}>▼</span>
+                      </div>
+                    )}
+                    {/* Fullscreen picker modal */}
+                    {showPlayerPicker&&(
+                      <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.95)",zIndex:600,display:"flex",flexDirection:"column"}}>
+                        {/* Header */}
+                        <div style={{background:"#181818",borderBottom:"1px solid rgba(255,107,53,0.2)",padding:"14px 16px",flexShrink:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                            <button onClick={()=>setShowPlayerPicker(false)}
+                              style={{background:"rgba(255,255,255,0.08)",border:"none",color:C.muted,borderRadius:10,padding:"8px 14px",cursor:"pointer",fontSize:13,fontWeight:700}}>
+                              ← Back
+                            </button>
+                            <div style={{fontSize:15,fontWeight:800,color:C.orange}}>Chọn vận động viên</div>
+                          </div>
+                          {/* Search box */}
+                          <div style={{position:"relative"}}>
+                            <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",fontSize:16,pointerEvents:"none"}}>🔍</span>
+                            <input
+                              value={playerSearch}
+                              onChange={e=>setPlayerSearch(e.target.value)}
+                              placeholder="Tìm tên VĐV..."
+                              autoFocus
+                              style={{width:"100%",background:"rgba(255,255,255,0.08)",border:"1px solid rgba(255,107,53,0.3)",borderRadius:10,padding:"11px 14px 11px 38px",color:C.text,fontSize:15,outline:"none",boxSizing:"border-box"}}
+                            />
+                          </div>
+                        </div>
+                        {/* Player list */}
+                        <div style={{flex:1,overflowY:"auto",padding:"10px 16px",display:"flex",flexDirection:"column",gap:6}}>
+                          {(()=>{
+                            const allPlayers=[...players.male,...players.female]
+                              .sort((a,b)=>a.name.localeCompare(b.name,"vi"));
+                            const filtered=playerSearch.trim()
+                              ? allPlayers.filter(p=>p.name.toLowerCase().includes(playerSearch.toLowerCase()))
+                              : allPlayers;
+                            const males=filtered.filter(p=>p.gender==="male");
+                            const females=filtered.filter(p=>p.gender==="female");
+                            if(filtered.length===0) return(
+                              <div style={{textAlign:"center",padding:"40px 0",color:C.dim,fontSize:14}}>
+                                Không tìm thấy VĐV nào
+                              </div>
+                            );
+                            const renderGroup=(list,label,color)=>list.length===0?null:(
+                              <div>
+                                <div style={{fontSize:10,color:color,fontWeight:800,letterSpacing:1,padding:"8px 4px 4px",textTransform:"uppercase"}}>{label} ({list.length})</div>
+                                {list.map(p=>(
+                                  <div key={p.id}
+                                    onClick={()=>{setTourRegForm(f=>({...f,playerName:p.name}));setShowPlayerPicker(false);setPlayerSearch("");}}
+                                    style={{display:"flex",alignItems:"center",gap:12,padding:"11px 12px",borderRadius:12,marginBottom:4,cursor:"pointer",
+                                      background:tourRegForm.playerName===p.name?"rgba(255,107,53,0.15)":"rgba(255,255,255,0.04)",
+                                      border:"1px solid "+(tourRegForm.playerName===p.name?"rgba(255,107,53,0.4)":"rgba(255,255,255,0.07)")}}>
+                                    <div style={{width:38,height:38,borderRadius:10,background:TIER_COLORS[p.tier]+"22",border:"1px solid "+TIER_COLORS[p.tier]+"44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                      <span style={{fontSize:13,fontWeight:800,color:TIER_COLORS[p.tier]}}>{p.tier}</span>
+                                    </div>
+                                    <div style={{flex:1,minWidth:0}}>
+                                      <div style={{fontSize:14,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.name}</div>
+                                      <div style={{fontSize:11,color:C.muted,marginTop:1}}>{p.boom?.toFixed(2)} pts · {p.gender==="male"?"Nam":"Nữ"}</div>
+                                    </div>
+                                    {tourRegForm.playerName===p.name&&(
+                                      <span style={{fontSize:18,color:C.orange}}>✓</span>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            );
+                            return(
+                              <>
+                                {renderGroup(males,"Nam","#60A5FA")}
+                                {renderGroup(females,"Nữ","#F9A8D4")}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   {/* Nội dung */}
                   <div>
@@ -2190,5 +2283,3 @@ export default function App(){
     </>
   );
 }
-
-
