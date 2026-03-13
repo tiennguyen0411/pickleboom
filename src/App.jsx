@@ -180,6 +180,7 @@ const rowToPlayer = (r) => ({
   boom: r.boom,
   gender: r.gender,
   remark: r.remark || "",
+  phone: r.phone || "",
 });
 
 const rowsToPlayers = (rows) => {
@@ -196,10 +197,10 @@ export default function App(){
   const [filterGender,setFilterGender]=useState("all");
   const [showAddModal,setShowAddModal]=useState(false);
   const [adjModal,setAdjModal]=useState(null);
-  const [newPlayer,setNewPlayer]=useState({name:"",tier:"3",gender:"male",remark:""});
+  const [newPlayer,setNewPlayer]=useState({name:"",tier:"3",gender:"male",remark:"",phone:""});
   const [adjForm,setAdjForm]=useState({type:"",value:0,note:""});
   const [editModal,setEditModal]=useState(null);
-  const [editForm,setEditForm]=useState({name:"",tier:"3",gender:"male",remark:""});
+  const [editForm,setEditForm]=useState({name:"",tier:"3",gender:"male",remark:"",phone:""});
   const [deleteConfirm,setDeleteConfirm]=useState(null);
   const [history,setHistory]=useState([]);
   const [notif,setNotif]=useState(null);
@@ -216,7 +217,7 @@ export default function App(){
   const [rankGender,setRankGender]=useState("male");
   const [dbReady,setDbReady]=useState(false);
   const [syncing,setSyncing]=useState(false);
-  const [regForm,setRegForm]=useState({name:"",email:"",pvna:"",gender:"male",note:""});
+  const [regForm,setRegForm]=useState({name:"",email:"",pvna:"",gender:"male",phone:"",note:""});
   const [regList,setRegList]=useState([]);
   const [regSubmitted,setRegSubmitted]=useState(false);
   const [regLoading,setRegLoading]=useState(false);
@@ -358,20 +359,32 @@ export default function App(){
   const handleLogout=()=>{sessionStorage.removeItem("pb_auth");setAuth({loggedIn:false,user:null,showLogin:false,u:"",p:"",err:""});if(["roles"].includes(tab))setTab("dashboard");showNotif("Đã đăng xuất");};
 
   const handleRegister=async()=>{
-    if(!regForm.name.trim()||!regForm.email.trim()||!regForm.pvna.trim())return;
+    if(!regForm.name.trim()||!regForm.phone.trim())return;
+    const phone=regForm.phone.trim();
+    const dupPlayer=allPlayers.find(p=>p.phone&&p.phone===phone);
+    if(dupPlayer){showNotif("SĐT đã đăng ký: "+dupPlayer.name,"err");setRegLoading(false);return;}
+    const dupReg=regList.find(r=>r.phone&&r.phone===phone&&r.status==="pending");
+    if(dupReg){showNotif("SĐT đang chờ duyệt ("+dupReg.name+")","err");setRegLoading(false);return;}
     setRegLoading(true);
-    const entry={id:Date.now(),name:regForm.name.trim(),email:regForm.email.trim(),pvna:regForm.pvna.trim(),gender:regForm.gender,note:regForm.note.trim(),time:new Date().toLocaleString("vi-VN"),status:"pending"};
+    const entry={id:Date.now(),name:regForm.name.trim(),phone,email:regForm.email.trim(),pvna:regForm.pvna.trim(),gender:regForm.gender,note:regForm.note.trim(),time:new Date().toLocaleString("vi-VN"),status:"pending"};
     setRegList(prev=>[entry,...prev]);
     try{await sbFetch("registrations",{method:"POST",headers:{"Prefer":"return=minimal"},body:JSON.stringify(entry)});}catch(e){console.error("reg:",e);}
     setRegSubmitted(true);
     setRegLoading(false);
-    setRegForm({name:"",email:"",pvna:"",gender:"male",note:""});
+    setRegForm({name:"",email:"",pvna:"",gender:"male",phone:"",note:""});
   };
 
   const handleApproveReg=async(reg)=>{
     setRegList(prev=>prev.map(r=>r.id===reg.id?{...r,status:"approved"}:r));
+    if(reg.phone){
+      const matched=allPlayers.find(p=>p.name.trim().toLowerCase()===reg.name.trim().toLowerCase()&&!p.phone);
+      if(matched){
+        setPlayers(prev=>({...prev,[matched.gender]:prev[matched.gender].map(p=>p.id===matched.id?{...p,phone:reg.phone}:p)}));
+        try{await sbFetch(`players?id=eq.${matched.id}`,{method:"PATCH",body:JSON.stringify({phone:reg.phone})});}catch(e){console.error(e);}
+      }
+    }
     try{await sbFetch(`registrations?id=eq.${reg.id}`,{method:"PATCH",body:JSON.stringify({status:"approved"})});}catch(e){console.error(e);}
-    showNotif(`Đã duyệt: ${reg.name}`);
+    showNotif("Đã duyệt: "+reg.name);
   };
 
   const handleRejectReg=async(reg)=>{
@@ -384,13 +397,18 @@ export default function App(){
     if(!newPlayer.name.trim())return;
     const boom=TIER_BOOM[newPlayer.tier]||2.5;
     const id=Date.now();
-    const p={id,name:newPlayer.name,tier:newPlayer.tier,boom,gender:newPlayer.gender,remark:newPlayer.remark||""};
+    const phone=(newPlayer.phone||"").trim();
+    if(phone){
+      const dup=allPlayers.find(pl=>pl.phone&&pl.phone===phone);
+      if(dup){showNotif("SĐT đã tồn tại: "+dup.name,"err");return;}
+    }
+    const p={id,name:newPlayer.name,tier:newPlayer.tier,boom,gender:newPlayer.gender,remark:newPlayer.remark||"",phone};
     setPlayers(prev=>({...prev,[newPlayer.gender]:[...prev[newPlayer.gender],p]}));
-    setNewPlayer({name:"",tier:"3",gender:"male",remark:""});
+    setNewPlayer({name:"",tier:"3",gender:"male",remark:"",phone:""});
     setShowAddModal(false);
     showNotif("Đã thêm VĐV "+newPlayer.name);
     try {
-      await sbFetch("players",{method:"POST",body:JSON.stringify({id,name:p.name,tier:p.tier,boom:p.boom,gender:p.gender,remark:p.remark||""})});
+      await sbFetch("players",{method:"POST",body:JSON.stringify({id,name:p.name,tier:p.tier,boom:p.boom,gender:p.gender,remark:p.remark||"",phone})});
     } catch(e){ console.error("add player:",e); }
     await addHistory("Thêm VĐV", newPlayer.name, `Tier ${newPlayer.tier}`);
   };
@@ -434,19 +452,24 @@ export default function App(){
     if(!editForm.name.trim())return;
     const newBoom=editForm.tier!==p.tier?TIER_BOOM[editForm.tier]:p.boom;
     const newRemark=editForm.remark||"";
+    const newPhone=(editForm.phone||"").trim();
+    if(newPhone&&newPhone!==p.phone){
+      const dup=allPlayers.find(pl=>pl.id!==p.id&&pl.phone&&pl.phone===newPhone);
+      if(dup){showNotif("SĐT đã tồn tại: "+dup.name,"err");return;}
+    }
     if(editForm.gender!==p.gender){
       setPlayers(prev=>({
         ...prev,
         [p.gender]:prev[p.gender].filter(pl=>pl.id!==p.id),
-        [editForm.gender]:[...prev[editForm.gender],{...p,name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark}],
+        [editForm.gender]:[...prev[editForm.gender],{...p,name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark,phone:newPhone}],
       }));
     } else {
-      setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,name:editForm.name,tier:editForm.tier,boom:newBoom,remark:newRemark}:pl)}));
+      setPlayers(prev=>({...prev,[p.gender]:prev[p.gender].map(pl=>pl.id===p.id?{...pl,name:editForm.name,tier:editForm.tier,boom:newBoom,remark:newRemark,phone:newPhone}:pl)}));
     }
     setEditModal(null);
     showNotif(`Đã cập nhật VĐV ${editForm.name}`);
     try {
-      await sbFetch(`players?id=eq.${p.id}`,{method:"PATCH",body:JSON.stringify({name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark})});
+      await sbFetch(`players?id=eq.${p.id}`,{method:"PATCH",body:JSON.stringify({name:editForm.name,tier:editForm.tier,boom:newBoom,gender:editForm.gender,remark:newRemark,phone:newPhone})});
     } catch(e){ console.error("edit:",e); }
     await addHistory("Sửa VĐV", editForm.name, `Tier ${editForm.tier} | ${editForm.gender==="male"?"Nam":"Nữ"}`);
   };
@@ -896,7 +919,7 @@ export default function App(){
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{fontSize:18,fontWeight:800,color:C.orange}}>VĐV ({filtered.length})</div>
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>{setShowRegModal(true);setRegSubmitted(false);setRegForm({name:"",email:"",pvna:"",gender:"male",note:""}); }} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"9px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}>📝 Đăng ký</button>
+                <button onClick={()=>{setShowRegModal(true);setRegSubmitted(false);setRegForm({name:"",email:"",pvna:"",gender:"male",phone:"",note:""}); }} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"9px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}>📝 Đăng ký</button>
                 {isAdmin&&can("canAddPlayers")&&(
                   <button onClick={()=>setShowAddModal(true)} style={{background:"linear-gradient(90deg,#FF6B35,#FF8C5A)",border:"none",color:"#fff",borderRadius:10,padding:"9px 16px",cursor:"pointer",fontSize:13,fontWeight:700,boxShadow:"0 4px 12px rgba(255,107,53,0.35)"}}>+ Thêm</button>
                 )}
@@ -958,7 +981,7 @@ export default function App(){
                         </button>
                       )}
                       {isAdmin&&can("canEditPlayers")&&(
-                        <button onClick={()=>{setEditModal(p);setEditForm({name:p.name,tier:p.tier,gender:p.gender,remark:p.remark||""});}}
+                        <button onClick={()=>{setEditModal(p);setEditForm({name:p.name,tier:p.tier,gender:p.gender,remark:p.remark||"",phone:p.phone||""});}}
                           style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#60A5FA",borderRadius:10,padding:"8px 10px",cursor:"pointer",fontSize:14}} title="Sửa thông tin">
                           ✏️
                         </button>
@@ -1287,7 +1310,8 @@ export default function App(){
                               {/* Meta */}
                               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:5}}>
                                 <span style={{fontSize:10,color:C.dim}}>🕐 {r.time}</span>
-                                {r.note&&<span style={{fontSize:10,color:"#FFB347",fontStyle:"italic"}}>💬 {r.note}</span>}
+                                {r.phone&&<span style={{fontSize:10,color:"#60A5FA"}}>📱 {r.phone}</span>}
+                          {r.note&&<span style={{fontSize:10,color:"#FFB347",fontStyle:"italic"}}>💬 {r.note}</span>}
                               </div>
                               {r.approvedBy&&<div style={{fontSize:10,color:"#4ADE80",marginTop:3,fontWeight:600}}>✓ Duyệt bởi {r.approvedBy}</div>}
                               {r.rejectedBy&&<div style={{fontSize:10,color:"#EF4444",marginTop:3,fontWeight:600}}>✗ Từ chối{r.rejectReason?" · "+r.rejectReason:""}</div>}
@@ -1435,7 +1459,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                 <div>
                   <div style={{fontWeight:900,fontSize:16,color:C.text}}>{playerHistoryView}</div>
-                  {pl&&<div style={{display:"flex",gap:6,marginTop:5,alignItems:"center"}}><TierChip tier={pl.tier}/><BoomBadge boom={pl.boom} tier={pl.tier}/><span style={{fontSize:10,color:C.dim}}>{pl.gender==="male"?"♂ Nam":"♀ Nữ"}</span></div>}
+                  {pl&&<div style={{display:"flex",gap:6,marginTop:5,alignItems:"center",flexWrap:"wrap"}}><TierChip tier={pl.tier}/><BoomBadge boom={pl.boom} tier={pl.tier}/><span style={{fontSize:10,color:C.dim}}>{pl.gender==="male"?"♂ Nam":"♀ Nữ"}</span>{pl.phone&&<span style={{fontSize:11,color:C.muted,background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"1px 7px"}}>📱 {pl.phone}</span>}</div>}
                 </div>
                 <button onClick={()=>setPlayerHistoryView(null)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}>✕ Đóng</button>
               </div>
@@ -1492,14 +1516,27 @@ export default function App(){
             <div style={{overflowY:"auto",flex:1,padding:"0 20px 24px"}}>
               {!regSubmitted?(
                 <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                  <input placeholder="Họ tên *" value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} style={MS}/>
-                  <input placeholder="Email *" value={regForm.email} onChange={e=>setRegForm(f=>({...f,email:e.target.value}))} style={MS}/>
-                  <input placeholder="Mã số PVNA *" value={regForm.pvna} onChange={e=>setRegForm(f=>({...f,pvna:e.target.value}))} style={MS}/>
+                  <input placeholder="Pickleball Name *" value={regForm.name} onChange={e=>setRegForm(f=>({...f,name:e.target.value}))} style={MS}/>
+                  <div style={{position:"relative"}}>
+                    <input placeholder="Số điện thoại *" value={regForm.phone} onChange={e=>{
+                      const phone=e.target.value.trim();
+                      setRegForm(f=>({...f,phone:e.target.value}));
+                    }} style={{...MS,borderColor:regForm.phone&&allPlayers.find(p=>p.phone===regForm.phone.trim())?"#EF4444":regForm.phone&&regList.find(r=>r.phone===regForm.phone.trim()&&r.status==="pending")?"#FBbF24":undefined}} inputMode="tel" autoComplete="tel"/>
+                    {regForm.phone&&(()=>{
+                      const dup=allPlayers.find(p=>p.phone===regForm.phone.trim());
+                      const dupReg=!dup&&regList.find(r=>r.phone===regForm.phone.trim()&&r.status==="pending");
+                      if(dup) return <div style={{fontSize:11,color:"#EF4444",marginTop:4,fontWeight:600}}>⚠️ SĐT đã có trong hệ thống: {dup.name}</div>;
+                      if(dupReg) return <div style={{fontSize:11,color:"#FBbF24",marginTop:4,fontWeight:600}}>⏳ SĐT đang chờ duyệt: {dupReg.name}</div>;
+                      return null;
+                    })()}
+                  </div>
                   <select value={regForm.gender} onChange={e=>setRegForm(f=>({...f,gender:e.target.value}))} style={MS}>
-                    <option value="male">Nam</option><option value="female">Nữ</option>
+                    <option value="male">♂ Nam</option><option value="female">♀ Nữ</option>
                   </select>
+                  <input placeholder="Email (tùy chọn)" value={regForm.email} onChange={e=>setRegForm(f=>({...f,email:e.target.value}))} style={MS}/>
+                  <input placeholder="Điểm trình PVNA (tùy chọn)" value={regForm.pvna} onChange={e=>setRegForm(f=>({...f,pvna:e.target.value}))} style={MS}/>
                   <input placeholder="Ghi chú (tùy chọn)" value={regForm.note} onChange={e=>setRegForm(f=>({...f,note:e.target.value}))} style={MS}/>
-                  <button onClick={handleRegister} disabled={regLoading} style={{background:"linear-gradient(90deg,#60A5FA,#3B82F6)",border:"none",color:"#fff",borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700,boxShadow:"0 4px 12px rgba(96,165,250,0.3)",opacity:regLoading?0.7:1,marginTop:4}}>
+                  <button onClick={handleRegister} disabled={regLoading||!!allPlayers.find(p=>p.phone===regForm.phone.trim())} style={{background:"linear-gradient(90deg,#60A5FA,#3B82F6)",border:"none",color:"#fff",borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700,boxShadow:"0 4px 12px rgba(96,165,250,0.3)",opacity:(regLoading||!!allPlayers.find(p=>p.phone===regForm.phone.trim()))?0.5:1,marginTop:4}}>
                     {regLoading?"Đang gửi...":"📝 Gửi đăng ký"}
                   </button>
                   {isAdmin&&can("canApproveReg")&&!!regList.length&&(
@@ -1510,7 +1547,8 @@ export default function App(){
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontWeight:700,fontSize:13,color:C.text}}>{r.name} <span style={{color:r.gender==="male"?"#60A5FA":"#F9A8D4",fontSize:11}}>{r.gender==="male"?"♂":"♀"}</span></div>
-                              <div style={{fontSize:11,color:C.muted}}>{r.email} · PVNA: {r.pvna}</div>
+                              {r.phone&&<div style={{fontSize:11,color:"#60A5FA"}}>📱 {r.phone}</div>}
+                          <div style={{fontSize:11,color:C.muted}}>{r.email&&r.email+" · "}{r.pvna&&"PVNA: "+r.pvna}</div>
                               <div style={{fontSize:10,color:C.dim,marginTop:2}}>🕐 {r.time}</div>
                             </div>
                             <span style={{fontSize:10,padding:"3px 8px",borderRadius:10,fontWeight:700,background:r.status==="approved"?"rgba(74,222,128,0.15)":r.status==="rejected"?"rgba(239,68,68,0.15)":"rgba(251,191,36,0.15)",color:r.status==="approved"?"#4ADE80":r.status==="rejected"?"#EF4444":"#FBbF24",flexShrink:0}}>{r.status==="approved"?"✓ Duyệt":r.status==="rejected"?"✗ Từ chối":"⏳ Chờ"}</span>
@@ -1557,6 +1595,7 @@ export default function App(){
                   <option value="male">♂ Nam</option><option value="female">♀ Nữ</option>
                 </select>
               </div>
+              <input placeholder="📱 Số điện thoại (tùy chọn)" value={newPlayer.phone} onChange={e=>setNewPlayer(p=>({...p,phone:e.target.value}))} style={MS} inputMode="tel"/>
               <input placeholder="Ghi chú (tùy chọn)" value={newPlayer.remark} onChange={e=>setNewPlayer(p=>({...p,remark:e.target.value}))} style={MS}/>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setShowAddModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Hủy</button>
@@ -1616,6 +1655,7 @@ export default function App(){
                   <option value="male">♂ Nam</option><option value="female">♀ Nữ</option>
                 </select>
               </div>
+              <input placeholder="📱 Số điện thoại" value={editForm.phone} onChange={e=>setEditForm(f=>({...f,phone:e.target.value}))} style={MS} inputMode="tel"/>
               <input placeholder="Ghi chú" value={editForm.remark} onChange={e=>setEditForm(f=>({...f,remark:e.target.value}))} style={MS}/>
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setEditModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Hủy</button>
