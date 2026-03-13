@@ -934,7 +934,7 @@ export default function App(){
               <div style={{display:"flex",gap:0,marginBottom:14,borderRadius:10,overflow:"hidden",border:"1px solid "+C.border}}>
                 {["male","female"].map(g=>(
                   <button key={g} onClick={()=>setRankGender(g)} style={{flex:1,padding:"9px",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:rankGender===g?C.orange:"transparent",color:rankGender===g?"#fff":C.muted,transition:"all 0.2s"}}>
-                    {g==="male"?"Nam Top Nam":"Nữ Top Nữ"}
+                    {g==="male"?"Top Nam":"Top Nữ"}
                   </button>
                 ))}
               </div>
@@ -1063,7 +1063,7 @@ export default function App(){
             <div style={{display:"flex",gap:0,borderRadius:10,overflow:"hidden",border:"1px solid "+C.border}}>
               {["male","female"].map(g=>(
                 <button key={g} onClick={()=>setRankGender(g)} style={{flex:1,padding:"10px",border:"none",cursor:"pointer",fontWeight:700,fontSize:13,background:rankGender===g?C.orange:"transparent",color:rankGender===g?"#fff":C.muted,transition:"all 0.2s"}}>
-                  {g==="male"?"Nam Nam":"Nữ Nữ"}
+                  {g==="male"?"Nam":"Nữ"}
                 </button>
               ))}
             </div>
@@ -1514,7 +1514,7 @@ export default function App(){
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
                 <div>
                   <div style={{fontWeight:900,fontSize:16,color:C.text}}>{playerHistoryView}</div>
-                  {pl&&<div style={{display:"flex",gap:6,marginTop:5,alignItems:"center",flexWrap:"wrap"}}><TierChip tier={pl.tier}/><BoomBadge boom={pl.boom} tier={pl.tier}/><span style={{fontSize:10,color:C.dim}}>{pl.gender==="male"?"Nam Nam":"Nữ Nữ"}</span>{pl.phone&&<span style={{fontSize:11,color:C.muted,background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"1px 7px"}}> {pl.phone}</span>}</div>}
+                  {pl&&<div style={{display:"flex",gap:6,marginTop:5,alignItems:"center",flexWrap:"wrap"}}><TierChip tier={pl.tier}/><BoomBadge boom={pl.boom} tier={pl.tier}/><span style={{fontSize:10,color:C.dim}}>{pl.gender==="male"?"Nam":"Nữ"}</span>{pl.phone&&<span style={{fontSize:11,color:C.muted,background:"rgba(255,255,255,0.06)",borderRadius:6,padding:"1px 7px"}}> {pl.phone}</span>}</div>}
                 </div>
                 <button onClick={()=>setPlayerHistoryView(null)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:13,fontWeight:700}}><Icon n="x" size={13} style={{marginRight:4}}/>Đóng</button>
               </div>
@@ -1586,7 +1586,7 @@ export default function App(){
                     })()}
                   </div>
                   <select value={regForm.gender} onChange={e=>setRegForm(f=>({...f,gender:e.target.value}))} style={MS}>
-                    <option value="male">Nam Nam</option><option value="female">Nữ Nữ</option>
+                    <option value="male">Nam</option><option value="female">Nữ</option>
                   </select>
                   <input placeholder="Email (tùy chọn)" value={regForm.email} onChange={e=>setRegForm(f=>({...f,email:e.target.value}))} style={MS}/>
                   <input placeholder="Điểm trình PVNA (tùy chọn)" value={regForm.pvna} onChange={e=>setRegForm(f=>({...f,pvna:e.target.value}))} style={MS}/>
@@ -1647,7 +1647,7 @@ export default function App(){
                   {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <select value={newPlayer.gender} onChange={e=>setNewPlayer(p=>({...p,gender:e.target.value}))} style={{...MS,flex:1}}>
-                  <option value="male">Nam Nam</option><option value="female">Nữ Nữ</option>
+                  <option value="male">Nam</option><option value="female">Nữ</option>
                 </select>
               </div>
               <input placeholder=" Số điện thoại (tùy chọn)" value={newPlayer.phone} onChange={e=>setNewPlayer(p=>({...p,phone:e.target.value}))} style={MS} inputMode="tel"/>
@@ -1707,7 +1707,7 @@ export default function App(){
                   {TIERS.map(t=><option key={t} value={t}>{t}</option>)}
                 </select>
                 <select value={editForm.gender} onChange={e=>setEditForm(f=>({...f,gender:e.target.value}))} style={{...MS,flex:1}}>
-                  <option value="male">Nam Nam</option><option value="female">Nữ Nữ</option>
+                  <option value="male">Nam</option><option value="female">Nữ</option>
                 </select>
               </div>
               <input placeholder=" Số điện thoại" value={editForm.phone} onChange={e=>setEditForm(f=>({...f,phone:e.target.value}))} style={MS} inputMode="tel"/>
