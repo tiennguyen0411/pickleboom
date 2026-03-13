@@ -299,6 +299,7 @@ export default function App(){
   const [refConfirmed,setRefConfirmed]=useState(false);
   const [showGroupDrawModal,setShowGroupDrawModal]=useState(null); // tour object
   const [groupConfig,setGroupConfig]=useState({numGroups:2,seedBy:"tier",players:[]});
+  const [editingMatchScore,setEditingMatchScore]=useState(null); // {matchId,s1,s2}
 
   const loadFromDB = async () => {
     setSyncing(true);
@@ -763,6 +764,56 @@ export default function App(){
     if(activeTour?.id===tour.id) setActiveTour(updatedTour);
     showNotif("Đã xóa bảng đấu","err");
     try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({groups:"[]"})}); } catch(e){console.error(e);}
+  };
+
+  const handleAutoGenerateMatches = async (tour) => {
+    const groups = tour.groups || [];
+    if(!groups.length){ showNotif("Cần chia bảng trước","err"); return; }
+    const newMatches = [];
+    groups.forEach(g => {
+      const ps = g.players || [];
+      for(let i=0;i<ps.length;i++){
+        for(let j=i+1;j<ps.length;j++){
+          newMatches.push({
+            id: Date.now()+"-"+Math.random().toString(36).slice(2,7),
+            group: g.name,
+            p1: ps[i], p2: ps[j],
+            score1: null, score2: null,
+            status: "pending",
+            date: new Date().toLocaleDateString("vi-VN"),
+          });
+        }
+      }
+    });
+    if(!newMatches.length){ showNotif("Không có trận nào được tạo","err"); return; }
+    const existing = tour.matches || [];
+    const merged = [...existing, ...newMatches];
+    const updatedTour = {...tour, matches: merged};
+    setTournaments(prev=>prev.map(t=>t.id===tour.id?updatedTour:t));
+    if(viewTour?.id===tour.id) setViewTour(updatedTour);
+    if(activeTour?.id===tour.id) setActiveTour(updatedTour);
+    showNotif("Đã tạo "+newMatches.length+" trận thi đấu!");
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(merged)})}); } catch(e){console.error(e);}
+  };
+
+  const handleUpdateMatchScore = async (tour, matchId, score1, score2) => {
+    const matches = (tour.matches||[]).map(m =>
+      m.id===matchId ? {...m, score1, score2, status:"done"} : m
+    );
+    const updatedTour = {...tour, matches};
+    setTournaments(prev=>prev.map(t=>t.id===tour.id?updatedTour:t));
+    if(viewTour?.id===tour.id) setViewTour(updatedTour);
+    if(activeTour?.id===tour.id) setActiveTour(updatedTour);
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(matches)})}); } catch(e){console.error(e);}
+  };
+
+  const handleDeleteScheduledMatch = async (tour, matchId) => {
+    const matches = (tour.matches||[]).filter(m=>m.id!==matchId);
+    const updatedTour = {...tour, matches};
+    setTournaments(prev=>prev.map(t=>t.id===tour.id?updatedTour:t));
+    if(viewTour?.id===tour.id) setViewTour(updatedTour);
+    if(activeTour?.id===tour.id) setActiveTour(updatedTour);
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(matches)})}); } catch(e){console.error(e);}
   };
 
   const handleRefPinSubmit = () => {
@@ -1264,7 +1315,7 @@ export default function App(){
                   {!!(viewTour.groups||[]).length&&(
                     <div style={{marginBottom:14}}>
                       <SectionTitle><Icon n="target" size={14} color={C.orange} style={{marginRight:6}}/>Bảng đấu</SectionTitle>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8}}>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:10}}>
                         {(viewTour.groups||[]).map((g,gi)=>(
                           <div key={gi} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:10,border:"1px solid rgba(236,122,28,0.15)"}}>
                             <div style={{fontWeight:700,fontSize:12,color:C.orange,marginBottom:6}}>{g.name}</div>
@@ -1272,27 +1323,154 @@ export default function App(){
                           </div>
                         ))}
                       </div>
-                      {can("canManageTournament")&&<button onClick={()=>handleDeleteGroups(viewTour)} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",color:"#EF4444",borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700,marginTop:8}}><Icon n="trash" size={13} style={{marginRight:4}}/>Xóa bảng</button>}
-                    </div>
-                  )}
-                  {!!(viewTour.matches||[]).length&&(
-                    <div>
-                      <SectionTitle><Icon n="ping2" size={14} color={C.orange} style={{marginRight:6}}/>Kết quả ({(viewTour.matches||[]).length} trận)</SectionTitle>
-                      {[...viewTour.matches].reverse().map((m,i)=>(
-                        <div key={m.id||i} style={{padding:"10px 0",borderBottom:i!==viewTour.matches.length-1?"1px solid rgba(236,122,28,0.07)":"none"}}>
-                          <div style={{display:"flex",alignItems:"center",gap:8}}>
-                            <span style={{fontSize:10,color:C.dim,flexShrink:0}}>R{m.round}</span>
-                            <div style={{flex:1,display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                              <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score1>m.score2?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{(m.team1||[]).join(" & ")}</span>
-                              <span style={{fontWeight:900,fontSize:15,color:C.text,flexShrink:0,padding:"2px 8px",background:"rgba(255,255,255,0.06)",borderRadius:6}}>{m.score1} - {m.score2}</span>
-                              <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(m.team2||[]).join(" & ")}</span>
-                            </div>
-                          </div>
+                      {can("canManageTournament")&&(
+                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                          <button onClick={()=>{
+                            const scheduled=(viewTour.matches||[]).filter(m=>m.group);
+                            if(scheduled.length>0&&!window.confirm("Đã có "+scheduled.length+" trận được tạo. Tạo thêm?")) return;
+                            handleAutoGenerateMatches(viewTour);
+                          }} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                            <Icon n="plus" size={13}/>Tạo lịch thi đấu
+                          </button>
+                          <button onClick={()=>handleDeleteGroups(viewTour)} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                            <Icon n="trash" size={13}/>Xóa bảng
+                          </button>
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
-                  {!(viewTour.matches||[]).length&&<div style={{textAlign:"center",color:C.dim,padding:20,fontSize:13}}>Chưa có trận đấu nào</div>}
+                  {(()=>{
+                    const scheduled=(viewTour.matches||[]).filter(m=>m.group);
+                    const legacy=(viewTour.matches||[]).filter(m=>!m.group);
+                    if(!scheduled.length&&!legacy.length) return(
+                      <div style={{textAlign:"center",color:C.dim,padding:20,fontSize:13}}>Chưa có trận đấu nào</div>
+                    );
+                    const groups=viewTour.groups||[];
+                    const groupNames=[...new Set(scheduled.map(m=>m.group))];
+                    return(<div>
+                      {!!scheduled.length&&(
+                        <div>
+                          <SectionTitle><Icon n="calendar" size={14} color={C.orange} style={{marginRight:6}}/>Lịch thi đấu ({scheduled.length} trận)</SectionTitle>
+                          {groupNames.map(gName=>{
+                            const gMatches=scheduled.filter(m=>m.group===gName);
+                            const pending=gMatches.filter(m=>m.status==="pending").length;
+                            const done=gMatches.filter(m=>m.status==="done").length;
+                            // Build standings for this group
+                            const playerNames=[...new Set(gMatches.flatMap(m=>[m.p1,m.p2]))];
+                            const standings=playerNames.map(name=>{
+                              const wins=gMatches.filter(m=>m.status==="done"&&((m.p1===name&&m.score1>m.score2)||(m.p2===name&&m.score2>m.score1))).length;
+                              const losses=gMatches.filter(m=>m.status==="done"&&((m.p1===name&&m.score1<m.score2)||(m.p2===name&&m.score2<m.score1))).length;
+                              const played=wins+losses;
+                              return{name,wins,losses,played};
+                            }).sort((a,b)=>b.wins-a.wins||a.losses-b.losses);
+                            return(
+                            <div key={gName} style={{marginBottom:16,background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(236,122,28,0.15)",overflow:"hidden"}}>
+                              {/* Group header */}
+                              <div style={{background:"rgba(236,122,28,0.1)",borderBottom:"1px solid rgba(236,122,28,0.15)",padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                                <span style={{fontWeight:800,fontSize:13,color:C.orange}}>{gName}</span>
+                                <span style={{fontSize:10,color:C.muted}}>{done}/{gMatches.length} trận · {pending} còn lại</span>
+                              </div>
+                              {/* Standings mini table */}
+                              {done>0&&(
+                                <div style={{padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
+                                  <div style={{fontSize:10,color:C.dim,marginBottom:4,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Bảng xếp hạng</div>
+                                  {standings.map((s,si)=>(
+                                    <div key={s.name} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0"}}>
+                                      <span style={{fontSize:10,fontWeight:800,color:si===0?C.orange:C.dim,width:14,textAlign:"center"}}>{si+1}</span>
+                                      <span style={{flex:1,fontSize:11,color:si===0?C.text:C.muted,fontWeight:si===0?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
+                                      <span style={{fontSize:11,color:"#4ADE80",fontWeight:700}}>{s.wins}T</span>
+                                      <span style={{fontSize:11,color:"#EF4444"}}>{s.losses}B</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              {/* Matches */}
+                              <div style={{padding:"0 0 4px"}}>
+                                {gMatches.map((m,mi)=>{
+                                  const isEditing=editingMatchScore?.matchId===m.id;
+                                  const isDone=m.status==="done";
+                                  return(
+                                  <div key={m.id} style={{padding:"10px 12px",borderBottom:mi!==gMatches.length-1?"1px solid rgba(255,255,255,0.04)":"none",background:isEditing?"rgba(236,122,28,0.06)":"transparent",transition:"background 0.15s"}}>
+                                    {/* Players row */}
+                                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isEditing?8:0}}>
+                                      <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score1>m.score2?700:500,color:isDone&&m.score1>m.score2?C.orange:C.text,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p1}</span>
+                                      {isDone?(
+                                        <span style={{fontWeight:900,fontSize:14,color:C.text,flexShrink:0,minWidth:52,textAlign:"center",padding:"3px 8px",background:"rgba(255,255,255,0.07)",borderRadius:6}}>
+                                          {m.score1} - {m.score2}
+                                        </span>
+                                      ):(
+                                        <span style={{fontSize:11,color:C.dim,flexShrink:0,padding:"3px 8px",background:"rgba(255,255,255,0.04)",borderRadius:6,minWidth:52,textAlign:"center"}}>vs</span>
+                                      )}
+                                      <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score2>m.score1?700:500,color:isDone&&m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p2}</span>
+                                      {can("canManageTournament")&&!isEditing&&(
+                                        <div style={{display:"flex",gap:4,flexShrink:0}}>
+                                          <button onClick={()=>setEditingMatchScore({matchId:m.id,s1:isDone?String(m.score1):"",s2:isDone?String(m.score2):""})} style={{background:"rgba(236,122,28,0.12)",border:"none",color:C.orange,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",gap:3}}>
+                                            <Icon n="edit" size={11}/>{isDone?"Sửa":"Nhập"}
+                                          </button>
+                                          <button onClick={()=>{if(window.confirm("Xóa trận này?"))handleDeleteScheduledMatch(viewTour,m.id);}} style={{background:"rgba(239,68,68,0.08)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>
+                                            <Icon n="trash" size={11}/>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {/* Score input */}
+                                    {isEditing&&(
+                                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                        <input
+                                          value={editingMatchScore.s1}
+                                          onChange={e=>setEditingMatchScore(v=>({...v,s1:e.target.value}))}
+                                          placeholder="0" inputMode="numeric"
+                                          style={{...MS,flex:1,textAlign:"center",fontSize:18,fontWeight:900,padding:"8px 4px"}}
+                                          maxLength={2}
+                                        />
+                                        <span style={{color:C.dim,fontWeight:700,fontSize:14}}>–</span>
+                                        <input
+                                          value={editingMatchScore.s2}
+                                          onChange={e=>setEditingMatchScore(v=>({...v,s2:e.target.value}))}
+                                          placeholder="0" inputMode="numeric"
+                                          style={{...MS,flex:1,textAlign:"center",fontSize:18,fontWeight:900,padding:"8px 4px"}}
+                                          maxLength={2}
+                                        />
+                                        <button onClick={()=>{
+                                          const s1=parseInt(editingMatchScore.s1);
+                                          const s2=parseInt(editingMatchScore.s2);
+                                          if(isNaN(s1)||isNaN(s2)){showNotif("Nhập điểm hợp lệ","err");return;}
+                                          handleUpdateMatchScore(viewTour,m.id,s1,s2);
+                                          setEditingMatchScore(null);
+                                        }} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
+                                          <Icon n="check" size={13}/>Lưu
+                                        </button>
+                                        <button onClick={()=>setEditingMatchScore(null)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:8,padding:"8px 10px",cursor:"pointer",fontSize:13}}>
+                                          <Icon n="x" size={13}/>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                )})}
+                              </div>
+                            </div>
+                          )})}
+                        </div>
+                      )}
+                      {!!legacy.length&&(
+                        <div>
+                          <SectionTitle><Icon n="ping2" size={14} color={C.orange} style={{marginRight:6}}/>Kết quả ({legacy.length} trận)</SectionTitle>
+                          {[...legacy].reverse().map((m,i)=>(
+                            <div key={m.id||i} style={{padding:"10px 0",borderBottom:i!==legacy.length-1?"1px solid rgba(236,122,28,0.07)":"none"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                <span style={{fontSize:10,color:C.dim,flexShrink:0}}>R{m.round}</span>
+                                <div style={{flex:1,display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                                  <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score1>m.score2?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{(m.team1||[]).join(" & ")}</span>
+                                  <span style={{fontWeight:900,fontSize:15,color:C.text,flexShrink:0,padding:"2px 8px",background:"rgba(255,255,255,0.06)",borderRadius:6}}>{m.score1} - {m.score2}</span>
+                                  <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(m.team2||[]).join(" & ")}</span>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>);
+                  })()}
                 </div>
               </div>
             )}
