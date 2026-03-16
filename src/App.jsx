@@ -2024,132 +2024,201 @@ export default function App(){
       )}
 
       {showTourRegForm&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.9)",display:"flex",alignItems:"flex-end",zIndex:220,animation:"fadeIn 0.2s ease"}}>
-          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"90vh",overflowY:"auto",padding:20,border:"1px solid "+C.border}}>
-            <div style={{width:40,height:4,background:"rgba(255,255,255,0.15)",borderRadius:4,margin:"0 auto 16px"}}/>
-            {!tourRegSubmitted?(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-end",zIndex:220,animation:"fadeIn 0.18s ease"}}>
+          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"92vh",display:"flex",flexDirection:"column",border:"1px solid "+C.border,boxShadow:"0 -8px 40px rgba(0,0,0,0.6)"}}>
+            {/* Drag handle */}
+            <div style={{width:44,height:5,background:"rgba(255,255,255,0.18)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+            {/* Header bar */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px 10px",flexShrink:0,borderBottom:"1px solid rgba(255,255,255,0.06)"}}>
               <div>
-                <div style={{marginBottom:16}}>
-                  <div style={{fontWeight:900,fontSize:16,color:C.orange,marginBottom:4}}><Icon n="register" size={13} style={{marginRight:4}}/>Đăng ký thi đấu</div>
-                  <div style={{fontSize:12,color:C.dim,padding:"8px 12px",borderRadius:8,background:"rgba(236,122,28,0.06)",border:"1px solid rgba(236,122,28,0.2)"}}>
-                    <Icon n="tournament" size={13} style={{marginRight:4}}/>{showTourRegForm.name} · <Icon n="calendar" size={13} style={{marginRight:4}}/> {showTourRegForm.date} ·  {showTourRegForm.format==="single"?"Đơn":showTourRegForm.format==="double"?"Đôi":"Hỗn hợp"}
-                  </div>
+                <div style={{fontWeight:900,fontSize:16,color:C.orange,display:"flex",alignItems:"center",gap:6}}>
+                  <Icon n="register" size={15} color={C.orange}/>Đăng ký thi đấu
                 </div>
-                <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <div style={{fontSize:11,color:C.muted,marginTop:2,display:"flex",alignItems:"center",gap:5}}>
+                  <Icon n="tournament" size={11}/>{showTourRegForm.name}
+                  <span style={{color:C.dim}}>·</span>
+                  <Icon n="calendar" size={11}/>{showTourRegForm.date}
+                  <span style={{color:C.dim}}>·</span>
+                  <span style={{color:C.orange,fontWeight:700}}>{showTourRegForm.format==="single"?"Đơn":showTourRegForm.format==="double"?"Đôi":"Hỗn hợp"}</span>
+                </div>
+              </div>
+              <button onClick={()=>{setShowTourRegForm(null);setTourRegSubmitted(false);}} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:10,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                <Icon n="x" size={16}/>
+              </button>
+            </div>
+            {/* Scrollable body */}
+            <div style={{overflowY:"auto",flex:1,padding:"16px 18px",WebkitOverflowScrolling:"touch"}}>
+            {!tourRegSubmitted?(
+              <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                {/* Format toggle - only for mixed */}
+                {showTourRegForm.format!=="single"&&(
+                  <div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Hình thức</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                      {["single","double"].map(ct=>(
+                        <button key={ct} onClick={()=>setTourRegForm(f=>({...f,content:ct,partner:ct==="single"?"":f.partner}))}
+                          style={{padding:"12px 8px",borderRadius:12,border:"2px solid "+(tourRegForm.content===ct?C.orange:"rgba(255,255,255,0.1)"),background:tourRegForm.content===ct?"rgba(236,122,28,0.12)":"rgba(255,255,255,0.03)",color:tourRegForm.content===ct?C.orange:C.muted,cursor:"pointer",fontWeight:700,fontSize:14,transition:"all 0.15s"}}>
+                          {ct==="single"?"Đánh đơn":"Đánh đôi"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {/* Player name autocomplete */}
+                <div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>
+                    Tên VĐV <span style={{color:"#EF4444"}}>*</span>
+                  </div>
                   <div style={{position:"relative"}}>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:5,fontWeight:600}}>Họ tên VĐV *</div>
                     <input
-                      placeholder="Tìm tên VĐV trong hệ thống..."
+                      placeholder="Tìm tên trong hệ thống..."
                       value={tourRegForm.playerName}
                       onChange={e=>{setTourRegForm(f=>({...f,playerName:e.target.value}));setRegPlayerFocus(true);}}
                       onFocus={()=>setRegPlayerFocus(true)}
-                      onBlur={()=>setTimeout(()=>setRegPlayerFocus(false),180)}
-                      style={{...MS}}
+                      onBlur={()=>setTimeout(()=>setRegPlayerFocus(false),200)}
+                      style={{...MS,paddingRight:tourRegForm.playerName?36:MS.padding}}
                       autoComplete="off"
                     />
-                    {regPlayerFocus&&(
-                      <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:999,background:"#1e1e1e",border:"1px solid "+C.border,borderRadius:10,maxHeight:200,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
-                        {allPlayers
-                          .filter(p=>!tourRegForm.playerName||p.name.toLowerCase().includes(tourRegForm.playerName.toLowerCase()))
-                          .slice(0,20)
-                          .map(p=>(
-                          <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,playerName:p.name}));setRegPlayerFocus(false);}}
-                            style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",transition:"background 0.1s"}}
-                            onMouseEnter={e=>e.currentTarget.style.background="rgba(236,122,28,0.1)"}
-                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                            <span style={{fontSize:12,color:p.gender==="male"?"#60A5FA":"#F9A8D4",flexShrink:0}}>{p.gender==="male"?"Nam":"Nữ"}</span>
-                            <span style={{flex:1,fontSize:14,fontWeight:600,color:C.text}}>{p.name}</span>
-                            <TierChip tier={p.tier}/>
-                            <BoomBadge boom={p.boom} tier={p.tier}/>
-                          </div>
-                        ))}
-                        {allPlayers.filter(p=>!tourRegForm.playerName||p.name.toLowerCase().includes(tourRegForm.playerName.toLowerCase())).length===0&&(
-                          <div style={{padding:"12px 14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>
-                        )}
-                      </div>
+                    {tourRegForm.playerName&&(
+                      <button onMouseDown={()=>setTourRegForm(f=>({...f,playerName:""}))} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.1)",border:"none",color:C.muted,borderRadius:20,width:22,height:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <Icon n="x" size={11}/>
+                      </button>
                     )}
-                  </div>
-                  {showTourRegForm.format!=="single"&&(
-                    <div>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:5,fontWeight:600}}>Hình thức đăng ký</div>
-                      <div style={{display:"flex",gap:8}}>
-                        {["single","double"].map(ct=>(
-                          <button key={ct} onClick={()=>setTourRegForm(f=>({...f,content:ct,partner:ct==="single"?"":f.partner}))}
-                            style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid "+(tourRegForm.content===ct?C.orange:"rgba(255,255,255,0.12)"),background:tourRegForm.content===ct?"rgba(236,122,28,0.12)":"transparent",color:tourRegForm.content===ct?C.orange:C.muted,cursor:"pointer",fontWeight:700,fontSize:13}}>
-                            {ct==="single"?" Đánh đơn":" Đánh đôi"}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {tourRegForm.content==="double"&&(
-                    <div style={{position:"relative"}}>
-                      <div style={{fontSize:11,color:C.muted,marginBottom:5,fontWeight:600}}>Tên đồng đội *</div>
-                      <input
-                        placeholder="Tìm tên đồng đội trong hệ thống..."
-                        value={tourRegForm.partner}
-                        onChange={e=>{setTourRegForm(f=>({...f,partner:e.target.value}));setRegPartnerFocus(true);}}
-                        onFocus={()=>setRegPartnerFocus(true)}
-                        onBlur={()=>setTimeout(()=>setRegPartnerFocus(false),180)}
-                        style={{...MS}}
-                        autoComplete="off"
-                      />
-                      {regPartnerFocus&&(
-                        <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:999,background:"#1e1e1e",border:"1px solid "+C.border,borderRadius:10,maxHeight:200,overflowY:"auto",boxShadow:"0 8px 24px rgba(0,0,0,0.6)",marginTop:4}}>
-                          {allPlayers
-                            .filter(p=>p.name!==tourRegForm.playerName&&(!tourRegForm.partner||p.name.toLowerCase().includes(tourRegForm.partner.toLowerCase())))
-                            .slice(0,20)
-                            .map(p=>(
-                            <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,partner:p.name}));setRegPartnerFocus(false);}}
-                              style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",transition:"background 0.1s"}}
+                    {regPlayerFocus&&(
+                      <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:999,background:"#2a2a22",border:"1px solid "+C.border,borderRadius:12,maxHeight:220,overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,0.7)"}}>
+                        {(()=>{
+                          const filtered=allPlayers.filter(p=>!tourRegForm.playerName||p.name.toLowerCase().includes(tourRegForm.playerName.toLowerCase())).slice(0,15);
+                          if(!filtered.length) return <div style={{padding:"14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>;
+                          return filtered.map(p=>(
+                            <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,playerName:p.name}));setRegPlayerFocus(false);}}
+                              style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",transition:"background 0.1s"}}
                               onMouseEnter={e=>e.currentTarget.style.background="rgba(236,122,28,0.1)"}
                               onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                              <span style={{fontSize:12,color:p.gender==="male"?"#60A5FA":"#F9A8D4",flexShrink:0}}>{p.gender==="male"?"Nam":"Nữ"}</span>
+                              <div style={{width:32,height:32,borderRadius:8,background:p.gender==="male"?"rgba(96,165,250,0.15)":"rgba(249,168,212,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                <Icon n={p.gender==="male"?"male":"female"} size={14} color={p.gender==="male"?"#60A5FA":"#F9A8D4"}/>
+                              </div>
                               <span style={{flex:1,fontSize:14,fontWeight:600,color:C.text}}>{p.name}</span>
                               <TierChip tier={p.tier}/>
                               <BoomBadge boom={p.boom} tier={p.tier}/>
                             </div>
-                          ))}
-                          {allPlayers.filter(p=>p.name!==tourRegForm.playerName&&(!tourRegForm.partner||p.name.toLowerCase().includes(tourRegForm.partner.toLowerCase()))).length===0&&(
-                            <div style={{padding:"12px 14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>
-                          )}
+                          ));
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                {/* Partner autocomplete */}
+                {tourRegForm.content==="double"&&(
+                  <div>
+                    <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>
+                      Đồng đội <span style={{color:"#EF4444"}}>*</span>
+                    </div>
+                    <div style={{position:"relative"}}>
+                      <input
+                        placeholder="Tìm tên đồng đội..."
+                        value={tourRegForm.partner}
+                        onChange={e=>{setTourRegForm(f=>({...f,partner:e.target.value}));setRegPartnerFocus(true);}}
+                        onFocus={()=>setRegPartnerFocus(true)}
+                        onBlur={()=>setTimeout(()=>setRegPartnerFocus(false),200)}
+                        style={{...MS}}
+                        autoComplete="off"
+                      />
+                      {tourRegForm.partner&&(
+                        <button onMouseDown={()=>setTourRegForm(f=>({...f,partner:""}))} style={{position:"absolute",right:10,top:"50%",transform:"translateY(-50%)",background:"rgba(255,255,255,0.1)",border:"none",color:C.muted,borderRadius:20,width:22,height:22,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <Icon n="x" size={11}/>
+                        </button>
+                      )}
+                      {regPartnerFocus&&(
+                        <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:999,background:"#2a2a22",border:"1px solid "+C.border,borderRadius:12,maxHeight:220,overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,0.7)"}}>
+                          {(()=>{
+                            const filtered=allPlayers.filter(p=>p.name!==tourRegForm.playerName&&(!tourRegForm.partner||p.name.toLowerCase().includes(tourRegForm.partner.toLowerCase()))).slice(0,15);
+                            if(!filtered.length) return <div style={{padding:"14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>;
+                            return filtered.map(p=>(
+                              <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,partner:p.name}));setRegPartnerFocus(false);}}
+                                style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",borderBottom:"1px solid rgba(255,255,255,0.05)",transition:"background 0.1s"}}
+                                onMouseEnter={e=>e.currentTarget.style.background="rgba(236,122,28,0.1)"}
+                                onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                                <div style={{width:32,height:32,borderRadius:8,background:p.gender==="male"?"rgba(96,165,250,0.15)":"rgba(249,168,212,0.15)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                  <Icon n={p.gender==="male"?"male":"female"} size={14} color={p.gender==="male"?"#60A5FA":"#F9A8D4"}/>
+                                </div>
+                                <span style={{flex:1,fontSize:14,fontWeight:600,color:C.text}}>{p.name}</span>
+                                <TierChip tier={p.tier}/>
+                                <BoomBadge boom={p.boom} tier={p.tier}/>
+                              </div>
+                            ));
+                          })()}
                         </div>
                       )}
                     </div>
-                  )}
-                  <div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:5,fontWeight:600}}>Ghi chú (tùy chọn)</div>
-                    <input placeholder="Yêu cầu đặc biệt, hạng dự thi..." value={tourRegForm.note} onChange={e=>setTourRegForm(f=>({...f,note:e.target.value}))} style={{...MS}}/>
                   </div>
-                  <div style={{fontSize:11,color:C.dim,padding:"8px 12px",borderRadius:8,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)"}}>
-                    ℹ️ Đăng ký sẽ được Admin/Mod xét duyệt. Bạn sẽ được thông báo kết quả.
+                )}
+                {/* Preview selected pair */}
+                {tourRegForm.playerName&&(
+                  <div style={{background:"rgba(236,122,28,0.07)",border:"1px solid rgba(236,122,28,0.2)",borderRadius:12,padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                    <Icon n="user" size={16} color={C.orange}/>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700,color:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tourRegForm.playerName}{tourRegForm.content==="double"&&tourRegForm.partner?" & "+tourRegForm.partner:""}</div>
+                      <div style={{fontSize:11,color:C.muted,marginTop:1}}>{tourRegForm.content==="double"?"Đôi":"Đơn"} · {showTourRegForm.name}</div>
+                    </div>
+                    <Icon n="check" size={14} color="#4ADE80"/>
                   </div>
-                  <div style={{display:"flex",gap:8,marginTop:4}}>
-                    <button onClick={()=>{setShowTourRegForm(null);setTourRegSubmitted(false);}} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Hủy</button>
-                    <button onClick={async()=>{
-                      if(!tourRegForm.playerName.trim()){showNotif("Vui lòng nhập họ tên","err");return;}
-                      if(tourRegForm.content==="double"&&!tourRegForm.partner.trim()){showNotif("Vui lòng nhập tên đồng đội","err");return;}
-                      await handleTourRegister();
-                    }} style={{flex:2,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700,boxShadow:"0 4px 12px rgba(236,122,28,0.35)"}}>
-                      <Icon n="register" size={13} style={{marginRight:4}}/>Gửi đăng ký
-                    </button>
-                  </div>
+                )}
+                {/* Note */}
+                <div>
+                  <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Ghi chú</div>
+                  <input placeholder="Yêu cầu đặc biệt (nếu có)..." value={tourRegForm.note} onChange={e=>setTourRegForm(f=>({...f,note:e.target.value}))} style={{...MS}}/>
+                </div>
+                {/* Info notice */}
+                <div style={{fontSize:11,color:C.muted,padding:"10px 14px",borderRadius:10,background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",display:"flex",alignItems:"flex-start",gap:8,lineHeight:1.5}}>
+                  <Icon n="shield" size={13} color={C.dim} style={{marginTop:1,flexShrink:0}}/>
+                  Đăng ký sẽ được Admin/Mod xét duyệt. Kết quả sẽ được thông báo sớm nhất có thể.
                 </div>
               </div>
             ):(
-              <div style={{textAlign:"center",padding:"32px 16px"}}>
-                <div style={{fontSize:52,marginBottom:12}}></div>
-                <div style={{fontSize:18,fontWeight:900,color:"#4ADE80",marginBottom:8}}>Đăng ký thành công!</div>
-                <div style={{fontSize:13,color:C.muted,marginBottom:6,lineHeight:1.6}}>
-                  Yêu cầu đăng ký của bạn đã được ghi nhận.
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",padding:"24px 0 16px",gap:16}}>
+                {/* Success icon */}
+                <div style={{width:72,height:72,borderRadius:"50%",background:"rgba(74,222,128,0.12)",border:"2px solid rgba(74,222,128,0.35)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  <Icon n="check" size={32} color="#4ADE80"/>
                 </div>
-                <div style={{fontSize:12,color:C.dim,padding:"10px 16px",borderRadius:10,background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.08)",marginBottom:20,lineHeight:1.7}}>
-                  <Icon n="medal" size={14} style={{marginRight:4}}/><strong style={{color:C.orange}}>{showTourRegForm.name}</strong><br/>
-                  <Icon n="calendar" size={12} style={{marginRight:3}}/>{showTourRegForm.date}<br/>
-                   Đang chờ Admin/Mod xét duyệt
+                <div style={{textAlign:"center"}}>
+                  <div style={{fontSize:20,fontWeight:900,color:"#4ADE80",marginBottom:6}}>Đăng ký thành công!</div>
+                  <div style={{fontSize:13,color:C.muted,lineHeight:1.6}}>Yêu cầu của bạn đã được ghi nhận</div>
                 </div>
-                <button onClick={()=>{setShowTourRegForm(null);setTourRegSubmitted(false);}} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:10,padding:"12px 32px",cursor:"pointer",fontSize:15,fontWeight:700}}>
+                {/* Tour info card */}
+                <div style={{width:"100%",background:"rgba(236,122,28,0.07)",border:"1px solid rgba(236,122,28,0.2)",borderLeft:"3px solid "+C.orange,borderRadius:12,padding:"14px 16px",display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <Icon n="tournament" size={14} color={C.orange}/>
+                    <span style={{fontWeight:800,fontSize:14,color:C.orange}}>{showTourRegForm.name}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <Icon n="calendar" size={13} color={C.muted}/>
+                    <span style={{fontSize:13,color:C.muted}}>{showTourRegForm.date}</span>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <Icon n="user" size={13} color={C.muted}/>
+                    <span style={{fontSize:13,color:C.text,fontWeight:600}}>{tourRegForm.playerName||"—"}</span>
+                    {tourRegForm.content==="double"&&tourRegForm.partner&&<><span style={{color:C.dim}}>+</span><span style={{fontSize:13,color:C.text,fontWeight:600}}>{tourRegForm.partner}</span></>}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,paddingTop:6,borderTop:"1px solid rgba(255,255,255,0.06)"}}>
+                    <Icon n="history" size={12} color="#FBbF24"/>
+                    <span style={{fontSize:11,color:"#FBbF24",fontWeight:600}}>Đang chờ Admin/Mod xét duyệt</span>
+                  </div>
+                </div>
+                <button onClick={()=>{setShowTourRegForm(null);setTourRegSubmitted(false);}} style={{width:"100%",background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:12,padding:"14px",cursor:"pointer",fontSize:15,fontWeight:700,boxShadow:"0 4px 16px rgba(236,122,28,0.3)"}}>
                   Đóng
+                </button>
+              </div>
+            )}
+            </div>
+            {/* Sticky submit button */}
+            {!tourRegSubmitted&&(
+              <div style={{padding:"12px 18px",borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0,background:"linear-gradient(160deg,#28281f 0%,#333329 100%)"}}>
+                <button onClick={async()=>{
+                  if(!tourRegForm.playerName.trim()){showNotif("Vui lòng chọn tên VĐV","err");return;}
+                  if(tourRegForm.content==="double"&&!tourRegForm.partner.trim()){showNotif("Vui lòng chọn tên đồng đội","err");return;}
+                  await handleTourRegister();
+                }} style={{width:"100%",background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:12,padding:"15px",cursor:"pointer",fontSize:15,fontWeight:800,boxShadow:"0 4px 16px rgba(236,122,28,0.35)",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                  <Icon n="register" size={16}/>Gửi đăng ký
                 </button>
               </div>
             )}
