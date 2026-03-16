@@ -300,6 +300,8 @@ export default function App(){
   const [showGroupDrawModal,setShowGroupDrawModal]=useState(null); // tour object
   const [groupConfig,setGroupConfig]=useState({numGroups:2,seedBy:"tier",players:[]});
   const [editingMatchScore,setEditingMatchScore]=useState(null); // {matchId,s1,s2}
+  const [viewTourTab,setViewTourTab]=useState("groups"); // "groups"|"schedule"|"knockout"
+  const [knockoutBracket,setKnockoutBracket]=useState(null); // generated bracket
 
   const loadFromDB = async () => {
     setSyncing(true);
@@ -816,6 +818,78 @@ export default function App(){
     try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({matches:JSON.stringify(matches)})}); } catch(e){console.error(e);}
   };
 
+  const generateKnockoutFromGroups = (tour) => {
+    const groups = tour.groups || [];
+    if(!groups.length) return null;
+    const scheduled = (tour.matches||[]).filter(m=>m.group);
+    // Build standings per group
+    const groupStandings = groups.map(g => {
+      const playerNames = g.players || [];
+      const standings = playerNames.map(name => {
+        const gMatches = scheduled.filter(m=>m.group===g.name&&m.status==="done");
+        const wins = gMatches.filter(m=>(m.p1===name&&m.score1>m.score2)||(m.p2===name&&m.score2>m.score1)).length;
+        const losses = gMatches.filter(m=>(m.p1===name&&m.score1<m.score2)||(m.p2===name&&m.score2<m.score1)).length;
+        const played = wins+losses;
+        const ptsFor = gMatches.reduce((s,m)=>s+(m.p1===name?(m.score1||0):(m.p2===name?(m.score2||0):0)),0);
+        const ptsAgainst = gMatches.reduce((s,m)=>s+(m.p1===name?(m.score2||0):(m.p2===name?(m.score1||0):0)),0);
+        return {name,wins,losses,played,ptsFor,ptsAgainst,diff:ptsFor-ptsAgainst};
+      }).sort((a,b)=>b.wins-a.wins||b.diff-a.diff);
+      return {name:g.name, standings};
+    });
+    // Pick top 2 from each group for knockout
+    const advancers = groupStandings.flatMap(g=>g.standings.slice(0,2));
+    // Build round of 16/QF/SF depending on count
+    const n = advancers.length;
+    // Pair: 1st group A vs 2nd group B, 1st group B vs 2nd group A, etc.
+    const pairs = [];
+    const half = Math.ceil(groupStandings.length/2);
+    for(let i=0;i<half;i++){
+      const g1 = groupStandings[i];
+      const g2 = groupStandings[i+half] || groupStandings[(i+1)%groupStandings.length];
+      if(g1&&g2){
+        pairs.push({id:"ko-"+i+"-0",p1:g1.standings[0]?.name||"TBD",p2:g2.standings[1]?.name||"TBD",score1:null,score2:null,round:"QF"});
+        pairs.push({id:"ko-"+i+"-1",p1:g2.standings[0]?.name||"TBD",p2:g1.standings[1]?.name||"TBD",score1:null,score2:null,round:"QF"});
+      }
+    }
+    if(!pairs.length){
+      // Fallback: simple bracket from all advancers
+      for(let i=0;i<advancers.length;i+=2){
+        if(advancers[i+1]) pairs.push({id:"ko-"+i,p1:advancers[i].name,p2:advancers[i+1].name,score1:null,score2:null,round:"QF"});
+      }
+    }
+    // Semi-finals slots
+    const semis = pairs.slice(0,4).map((_,i)=>({id:"sf-"+i,p1:"W QF"+(i*2+1),p2:"W QF"+(i*2+2),score1:null,score2:null,round:"SF"}));
+    // Final
+    const final = [{id:"final-0",p1:"W SF1",p2:"W SF2",score1:null,score2:null,round:"F"},{id:"bronze-0",p1:"L SF1",p2:"L SF2",score1:null,score2:null,round:"3rd"}];
+    return {groupStandings, qf:pairs, sf:semis.slice(0,2), final};
+  };
+
+  const handleSaveKnockoutScore = async (tour, matchId, score1, score2, bracket) => {
+    const updatedBracket = JSON.parse(JSON.stringify(bracket));
+    ["qf","sf","final"].forEach(round=>{
+      if(updatedBracket[round]) updatedBracket[round]=updatedBracket[round].map(m=>m.id===matchId?{...m,score1,score2,done:true}:m);
+    });
+    // Propagate winners to next round
+    const getWinner = (m) => m.done ? (m.score1>m.score2?m.p1:m.p2) : null;
+    const getLoser = (m) => m.done ? (m.score1>m.score2?m.p2:m.p1) : null;
+    // QF winners → SF
+    updatedBracket.qf.forEach((m,i)=>{
+      const w=getWinner(m);
+      if(w&&updatedBracket.sf[Math.floor(i/2)]){
+        if(i%2===0) updatedBracket.sf[Math.floor(i/2)].p1=w;
+        else updatedBracket.sf[Math.floor(i/2)].p2=w;
+      }
+    });
+    // SF winners → Final, losers → 3rd place
+    updatedBracket.sf.forEach((m,i)=>{
+      const w=getWinner(m); const l=getLoser(m);
+      if(w&&updatedBracket.final[0]){ if(i===0) updatedBracket.final[0].p1=w; else updatedBracket.final[0].p2=w; }
+      if(l&&updatedBracket.final[1]){ if(i===0) updatedBracket.final[1].p1=l; else updatedBracket.final[1].p2=l; }
+    });
+    setKnockoutBracket(updatedBracket);
+    try { await sbFetch(`tournaments?id=eq.${tour.id}`,{method:"PATCH",body:JSON.stringify({knockout:JSON.stringify(updatedBracket)})}); } catch(e){console.error(e);}
+  };
+
   const handleRefPinSubmit = () => {
     const tour = tournaments.find(t => t.pin === refPinInput && t.status === "active");
     if(tour){ setRefTour(tour); setRefPinErr(""); setRefPinInput(""); }
@@ -1290,180 +1364,201 @@ export default function App(){
               );
             })}
             {viewTour&&(
-              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-end",zIndex:200,animation:"fadeIn 0.2s ease"}}>
-                <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"90vh",overflowY:"auto",padding:20,border:"1px solid "+C.border}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-                    <div style={{fontWeight:800,fontSize:16,color:C.orange,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
-                    <button onClick={()=>setViewTour(null)} style={{background:"transparent",border:"none",color:C.dim,cursor:"pointer",fontSize:22,marginLeft:8}}><Icon n="x" size={16}/></button>
-                  </div>
-                  <div style={{fontSize:11,color:C.dim,display:"flex",gap:10,flexWrap:"wrap",marginBottom:14}}>
-                    <span style={{display:"flex",alignItems:"center",gap:4}}><Icon n="calendar" size={12} color={C.muted}/>{viewTour.date}</span>
-                    <span> {viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Hỗn hợp"}</span>
-                    <span style={{color:viewTour.status==="active"?"#4ADE80":"#6B7280"}}>{viewTour.status==="active"?"● Đang diễn":"○ Kết thúc"}</span>
-                  </div>
-                  {(can("canManageTournament")||can("canApproveTourReg"))&&(
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-                      {can("canManageTournament")&&viewTour.status==="active"&&<button onClick={()=>setShowMatchModal(true)} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>+ Thêm trận</button>}
-                      {can("canManageTournament")&&<button onClick={()=>openGroupDraw(viewTour)} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.35)",color:"#f4954a",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}><Icon n="target" size={13} style={{marginRight:4}}/>Chia bảng</button>}
-                      <button onClick={()=>setShowTourRegAdmin(viewTour)} style={{position:"relative",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.35)",color:"#FBbF24",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                        <Icon n="history" size={13} style={{marginRight:4}}/>DS Đăng ký
-                        {(viewTour.tourRegs||[]).filter(r=>r.status==="pending").length?<span style={{position:"absolute",top:-6,right:-6,background:"#EF4444",color:"#fff",borderRadius:20,fontSize:9,fontWeight:900,padding:"1px 5px",minWidth:16,textAlign:"center"}}>{(viewTour.tourRegs||[]).filter(r=>r.status==="pending").length}</span>:null}
+              <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",display:"flex",alignItems:"flex-end",zIndex:200,animation:"fadeIn 0.2s ease"}}>
+                <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"93vh",display:"flex",flexDirection:"column",border:"1px solid "+C.border,boxShadow:"0 -8px 40px rgba(0,0,0,0.6)"}}>
+                  {/* Drag handle */}
+                  <div style={{width:44,height:5,background:"rgba(255,255,255,0.18)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+                  {/* Header */}
+                  <div style={{padding:"12px 18px 0",flexShrink:0}}>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontWeight:900,fontSize:17,color:C.orange,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
+                        <div style={{fontSize:11,color:C.muted,display:"flex",gap:8,flexWrap:"wrap",marginTop:3}}>
+                          <span style={{display:"flex",alignItems:"center",gap:3}}><Icon n="calendar" size={11}/>{viewTour.date}</span>
+                          <span>{viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Hỗn hợp"}</span>
+                          <span style={{color:viewTour.status==="active"?"#4ADE80":"#6B7280",fontWeight:700}}>{viewTour.status==="active"?"● Đang diễn":"○ Kết thúc"}</span>
+                        </div>
+                      </div>
+                      <button onClick={()=>{setViewTour(null);setViewTourTab("groups");setKnockoutBracket(null);}} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:10,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <Icon n="x" size={16}/>
                       </button>
-                      {can("canManageTournament")&&viewTour.status==="active"&&<button onClick={()=>{if(window.confirm("Kết thúc giải?"))handleEndTour(viewTour);}} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.35)",color:"#EF4444",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontSize:12,fontWeight:700}}><Icon n="check" size={13} style={{marginRight:4}}/>Kết thúc</button>}
                     </div>
-                  )}
-                  {!!(viewTour.groups||[]).length&&(
-                    <div style={{marginBottom:14}}>
-                      <SectionTitle><Icon n="target" size={14} color={C.orange} style={{marginRight:6}}/>Bảng đấu</SectionTitle>
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(140px,1fr))",gap:8,marginBottom:10}}>
-                        {(viewTour.groups||[]).map((g,gi)=>(
-                          <div key={gi} style={{background:"rgba(255,255,255,0.04)",borderRadius:10,padding:10,border:"1px solid rgba(236,122,28,0.15)"}}>
-                            <div style={{fontWeight:700,fontSize:12,color:C.orange,marginBottom:6}}>{g.name}</div>
-                            {(g.players||[]).map((pn,pi)=><div key={pi} style={{fontSize:11,color:C.text,padding:"2px 0",borderBottom:pi!==g.players.length-1?"1px solid rgba(255,255,255,0.05)":"none"}}>{pn}</div>)}
-                          </div>
+                    {/* Admin action buttons */}
+                    {(can("canManageTournament")||can("canApproveTourReg"))&&(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                        {can("canManageTournament")&&viewTour.status==="active"&&<button onClick={()=>setShowMatchModal(true)} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="plus" size={12}/>Thêm trận</button>}
+                        {can("canManageTournament")&&<button onClick={()=>openGroupDraw(viewTour)} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.3)",color:"#f4954a",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="target" size={12}/>Chia bảng</button>}
+                        {(can("canManageTournament")||can("canApproveTourReg"))&&<button onClick={()=>setShowTourRegAdmin(viewTour)} style={{position:"relative",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",color:"#FBbF24",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                          <Icon n="history" size={12}/>DS Đăng ký
+                          {(viewTour.tourRegs||[]).filter(r=>r.status==="pending").length?<span style={{position:"absolute",top:-5,right:-5,background:"#EF4444",color:"#fff",borderRadius:20,fontSize:9,fontWeight:900,padding:"1px 5px"}}>{(viewTour.tourRegs||[]).filter(r=>r.status==="pending").length}</span>:null}
+                        </button>}
+                        {can("canManageTournament")&&viewTour.status==="active"&&<button onClick={async()=>{if(window.confirm("Kết thúc giải?"))await handleEndTour(viewTour);}} style={{background:"rgba(239,68,68,0.12)",border:"1px solid rgba(239,68,68,0.3)",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="check" size={12}/>Kết thúc</button>}
+                        {can("canManageTournament")&&<button onClick={()=>{setEditTourModal({tour:viewTour,form:{name:viewTour.name,date:viewTour.date,format:viewTour.format,rounds:String(viewTour.rounds||1),note:viewTour.note||"",pin:viewTour.pin||"",bestOf:String(viewTour.bestOf||3)}});}} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:8,padding:"7px 10px",cursor:"pointer",fontSize:12,display:"flex",alignItems:"center",gap:4}}><Icon n="edit" size={12}/>Sửa</button>}
+                      </div>
+                    )}
+                    {/* Tab navigation */}
+                    {!!(viewTour.groups||[]).length&&(
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:4,marginBottom:0}}>
+                        {[
+                          {key:"groups",label:"Bảng đấu",icon:"target"},
+                          {key:"schedule",label:"Lịch đấu",icon:"calendar"},
+                          {key:"knockout",label:"Knockout",icon:"trophy"},
+                        ].map(tb=>(
+                          <button key={tb.key} onClick={()=>{setViewTourTab(tb.key);if(tb.key==="knockout"&&!knockoutBracket)setKnockoutBracket(generateKnockoutFromGroups(viewTour));}}
+                            style={{padding:"8px 4px",borderRadius:"10px 10px 0 0",border:"none",borderBottom:viewTourTab===tb.key?"2px solid "+C.orange:"2px solid transparent",background:viewTourTab===tb.key?"rgba(236,122,28,0.1)":"transparent",color:viewTourTab===tb.key?C.orange:C.muted,cursor:"pointer",fontWeight:700,fontSize:12,display:"flex",alignItems:"center",justifyContent:"center",gap:5,transition:"all 0.15s"}}>
+                            <Icon n={tb.icon} size={13}/>{tb.label}
+                          </button>
                         ))}
                       </div>
-                      {can("canManageTournament")&&(
-                        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                          <button onClick={()=>{
-                            const scheduled=(viewTour.matches||[]).filter(m=>m.group);
-                            if(scheduled.length>0&&!window.confirm("Đã có "+scheduled.length+" trận được tạo. Tạo thêm?")) return;
-                            handleAutoGenerateMatches(viewTour);
-                          }} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                            <Icon n="plus" size={13}/>Tạo lịch thi đấu
-                          </button>
-                          <button onClick={()=>handleDeleteGroups(viewTour)} style={{background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",color:"#EF4444",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
-                            <Icon n="trash" size={13}/>Xóa bảng
-                          </button>
+                    )}
+                  </div>
+                  {/* Scrollable body */}
+                  <div style={{overflowY:"auto",flex:1,padding:"16px 18px 24px",WebkitOverflowScrolling:"touch"}}>
+
+                  {/* ══ TAB: BẢNG ĐẤU ══ */}
+                  {(viewTourTab==="groups"||(viewTour.groups||[]).length===0)&&(()=>{
+                    const scheduled=(viewTour.matches||[]).filter(m=>m.group);
+                    const groupNames=[...new Set(scheduled.map(m=>m.group))];
+                    return(<div style={{display:"flex",flexDirection:"column",gap:14}}>
+                      {!(viewTour.groups||[]).length&&(
+                        <div style={{textAlign:"center",color:C.dim,padding:"32px 0"}}>
+                          <Icon n="target" size={28} color={C.dim} style={{marginBottom:8}}/>
+                          <div style={{fontSize:13}}>Chưa chia bảng</div>
+                          {can("canManageTournament")&&<button onClick={()=>openGroupDraw(viewTour)} style={{marginTop:12,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:10,padding:"10px 20px",cursor:"pointer",fontSize:13,fontWeight:700}}>Chia bảng ngay</button>}
                         </div>
                       )}
-                    </div>
-                  )}
-                  {(()=>{
+                      {(viewTour.groups||[]).map((g,gi)=>{
+                        const gMatches=scheduled.filter(m=>m.group===g.name&&m.status==="done");
+                        const playerNames=g.players||[];
+                        const standings=playerNames.map(name=>{
+                          const wins=gMatches.filter(m=>(m.p1===name&&m.score1>m.score2)||(m.p2===name&&m.score2>m.score1)).length;
+                          const losses=gMatches.filter(m=>(m.p1===name&&m.score1<m.score2)||(m.p2===name&&m.score2<m.score1)).length;
+                          const played=wins+losses;
+                          const ptsFor=gMatches.reduce((s,m)=>s+(m.p1===name?(m.score1||0):(m.p2===name?(m.score2||0):0)),0);
+                          const ptsAgainst=gMatches.reduce((s,m)=>s+(m.p1===name?(m.score2||0):(m.p2===name?(m.score1||0):0)),0);
+                          return{name,wins,losses,played,ptsFor,ptsAgainst,diff:ptsFor-ptsAgainst};
+                        }).sort((a,b)=>b.wins-a.wins||b.diff-a.diff);
+                        return(
+                        <div key={gi} style={{background:"rgba(255,255,255,0.025)",borderRadius:14,border:"1px solid rgba(236,122,28,0.18)",overflow:"hidden"}}>
+                          {/* Group header */}
+                          <div style={{background:"rgba(236,122,28,0.12)",borderBottom:"1px solid rgba(236,122,28,0.18)",padding:"10px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span style={{fontWeight:900,fontSize:14,color:C.orange,fontFamily:"'Barlow Condensed',sans-serif",letterSpacing:0.5}}>{g.name}</span>
+                            <span style={{fontSize:10,color:C.muted}}>{playerNames.length} VĐV · {gMatches.length}/{scheduled.filter(m=>m.group===g.name).length} trận</span>
+                          </div>
+                          {/* Standings table */}
+                          <div style={{overflowX:"auto"}}>
+                            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                              <thead>
+                                <tr style={{background:"rgba(255,255,255,0.03)"}}>
+                                  <th style={{padding:"7px 14px",textAlign:"left",color:C.dim,fontWeight:700,fontSize:10,letterSpacing:0.5,whiteSpace:"nowrap"}}>#</th>
+                                  <th style={{padding:"7px 8px",textAlign:"left",color:C.dim,fontWeight:700,fontSize:10,letterSpacing:0.5}}>VĐV</th>
+                                  <th style={{padding:"7px 8px",textAlign:"center",color:C.dim,fontWeight:700,fontSize:10}}>T</th>
+                                  <th style={{padding:"7px 8px",textAlign:"center",color:C.dim,fontWeight:700,fontSize:10}}>B</th>
+                                  <th style={{padding:"7px 8px",textAlign:"center",color:C.dim,fontWeight:700,fontSize:10}}>ĐV</th>
+                                  <th style={{padding:"7px 8px",textAlign:"center",color:C.dim,fontWeight:700,fontSize:10}}>ĐT</th>
+                                  <th style={{padding:"7px 12px",textAlign:"center",color:C.dim,fontWeight:700,fontSize:10}}>+/-</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {standings.map((s,si)=>(
+                                  <tr key={s.name} style={{borderTop:"1px solid rgba(255,255,255,0.04)",background:si===0?"rgba(236,122,28,0.06)":si===1?"rgba(236,122,28,0.03)":"transparent"}}>
+                                    <td style={{padding:"9px 14px",textAlign:"left"}}>
+                                      <span style={{fontWeight:900,fontSize:13,color:si===0?C.orange:si===1?"#d4b870":C.dim}}>{si+1}</span>
+                                    </td>
+                                    <td style={{padding:"9px 8px",maxWidth:120}}>
+                                      <div style={{fontWeight:si<2?700:500,color:si===0?C.text:C.muted,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontSize:12}}>{s.name}</div>
+                                      {si<2&&<div style={{fontSize:9,color:si===0?"#4ADE80":"#60A5FA",fontWeight:700,marginTop:1}}>{si===0?"Nhất bảng":"Nhì bảng"}</div>}
+                                    </td>
+                                    <td style={{padding:"9px 8px",textAlign:"center",fontWeight:700,color:"#4ADE80"}}>{s.wins}</td>
+                                    <td style={{padding:"9px 8px",textAlign:"center",color:"#EF4444"}}>{s.losses}</td>
+                                    <td style={{padding:"9px 8px",textAlign:"center",color:C.muted}}>{s.ptsFor}</td>
+                                    <td style={{padding:"9px 8px",textAlign:"center",color:C.muted}}>{s.ptsAgainst}</td>
+                                    <td style={{padding:"9px 12px",textAlign:"center",fontWeight:700,color:s.diff>0?C.orange:s.diff<0?"#EF4444":C.dim}}>{s.diff>0?"+":""}{s.diff}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )})}
+                      {can("canManageTournament")&&!!(viewTour.groups||[]).length&&(
+                        <button onClick={()=>handleDeleteGroups(viewTour)} style={{alignSelf:"flex-start",background:"rgba(239,68,68,0.08)",border:"1px solid rgba(239,68,68,0.25)",color:"#EF4444",borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:6}}>
+                          <Icon n="trash" size={13}/>Xóa bảng
+                        </button>
+                      )}
+                    </div>);
+                  })()}
+
+                  {/* ══ TAB: LỊCH THI ĐẤU ══ */}
+                  {viewTourTab==="schedule"&&!!(viewTour.groups||[]).length&&(()=>{
                     const scheduled=(viewTour.matches||[]).filter(m=>m.group);
                     const legacy=(viewTour.matches||[]).filter(m=>!m.group);
-                    if(!scheduled.length&&!legacy.length) return(
-                      <div style={{textAlign:"center",color:C.dim,padding:20,fontSize:13}}>Chưa có trận đấu nào</div>
-                    );
-                    const groups=viewTour.groups||[];
                     const groupNames=[...new Set(scheduled.map(m=>m.group))];
-                    return(<div>
-                      {!!scheduled.length&&(
-                        <div>
-                          <SectionTitle><Icon n="calendar" size={14} color={C.orange} style={{marginRight:6}}/>Lịch thi đấu ({scheduled.length} trận)</SectionTitle>
-                          {groupNames.map(gName=>{
-                            const gMatches=scheduled.filter(m=>m.group===gName);
-                            const pending=gMatches.filter(m=>m.status==="pending").length;
-                            const done=gMatches.filter(m=>m.status==="done").length;
-                            // Build standings for this group
-                            const playerNames=[...new Set(gMatches.flatMap(m=>[m.p1,m.p2]))];
-                            const standings=playerNames.map(name=>{
-                              const wins=gMatches.filter(m=>m.status==="done"&&((m.p1===name&&m.score1>m.score2)||(m.p2===name&&m.score2>m.score1))).length;
-                              const losses=gMatches.filter(m=>m.status==="done"&&((m.p1===name&&m.score1<m.score2)||(m.p2===name&&m.score2<m.score1))).length;
-                              const played=wins+losses;
-                              return{name,wins,losses,played};
-                            }).sort((a,b)=>b.wins-a.wins||a.losses-b.losses);
+                    return(<div style={{display:"flex",flexDirection:"column",gap:12}}>
+                      {can("canManageTournament")&&(
+                        <button onClick={()=>{
+                          const existing=scheduled.length;
+                          if(existing>0&&!window.confirm("Đã có "+existing+" trận. Tạo thêm?")) return;
+                          handleAutoGenerateMatches(viewTour);
+                        }} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:10,padding:"11px 16px",cursor:"pointer",fontSize:13,fontWeight:700,display:"flex",alignItems:"center",gap:6,alignSelf:"flex-start"}}>
+                          <Icon n="plus" size={14}/>Tạo lịch thi đấu round-robin
+                        </button>
+                      )}
+                      {!scheduled.length&&<div style={{textAlign:"center",color:C.dim,padding:"24px 0",fontSize:13}}>Chưa có lịch thi đấu</div>}
+                      {groupNames.map(gName=>{
+                        const gMatches=scheduled.filter(m=>m.group===gName);
+                        const done=gMatches.filter(m=>m.status==="done").length;
+                        return(
+                        <div key={gName} style={{background:"rgba(255,255,255,0.025)",borderRadius:14,border:"1px solid rgba(236,122,28,0.15)",overflow:"hidden"}}>
+                          <div style={{background:"rgba(236,122,28,0.1)",borderBottom:"1px solid rgba(236,122,28,0.15)",padding:"9px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span style={{fontWeight:900,fontSize:13,color:C.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>{gName}</span>
+                            <span style={{fontSize:10,color:C.muted}}>{done}/{gMatches.length} hoàn thành</span>
+                          </div>
+                          {gMatches.map((m,mi)=>{
+                            const isEditing=editingMatchScore?.matchId===m.id;
+                            const isDone=m.status==="done";
                             return(
-                            <div key={gName} style={{marginBottom:16,background:"rgba(255,255,255,0.03)",borderRadius:12,border:"1px solid rgba(236,122,28,0.15)",overflow:"hidden"}}>
-                              {/* Group header */}
-                              <div style={{background:"rgba(236,122,28,0.1)",borderBottom:"1px solid rgba(236,122,28,0.15)",padding:"8px 12px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                                <span style={{fontWeight:800,fontSize:13,color:C.orange}}>{gName}</span>
-                                <span style={{fontSize:10,color:C.muted}}>{done}/{gMatches.length} trận · {pending} còn lại</span>
+                            <div key={m.id} style={{padding:"10px 14px",borderBottom:mi!==gMatches.length-1?"1px solid rgba(255,255,255,0.04)":"none",background:isEditing?"rgba(236,122,28,0.05)":"transparent"}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score1>m.score2?700:500,color:isDone&&m.score1>m.score2?C.orange:C.text,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p1}</span>
+                                {isDone?(
+                                  <span style={{fontWeight:900,fontSize:14,flexShrink:0,minWidth:56,textAlign:"center",padding:"4px 8px",background:"rgba(255,255,255,0.07)",borderRadius:8,color:C.text}}>{m.score1} – {m.score2}</span>
+                                ):(
+                                  <span style={{fontSize:11,color:C.dim,flexShrink:0,padding:"4px 10px",background:"rgba(255,255,255,0.04)",borderRadius:8,minWidth:56,textAlign:"center"}}>vs</span>
+                                )}
+                                <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score2>m.score1?700:500,color:isDone&&m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p2}</span>
+                                {can("canManageTournament")&&!isEditing&&(
+                                  <div style={{display:"flex",gap:4,flexShrink:0}}>
+                                    <button onClick={()=>setEditingMatchScore({matchId:m.id,s1:isDone?String(m.score1):"",s2:isDone?String(m.score2):""})} style={{background:"rgba(236,122,28,0.12)",border:"none",color:C.orange,borderRadius:6,padding:"5px 8px",cursor:"pointer",display:"flex",alignItems:"center",gap:3,fontSize:11,fontWeight:700}}>
+                                      <Icon n="edit" size={11}/>{isDone?"Sửa":"Nhập"}
+                                    </button>
+                                    <button onClick={()=>{if(window.confirm("Xóa trận?"))handleDeleteScheduledMatch(viewTour,m.id);}} style={{background:"rgba(239,68,68,0.08)",border:"none",color:"#EF4444",borderRadius:6,padding:"5px 7px",cursor:"pointer"}}><Icon n="trash" size={11}/></button>
+                                  </div>
+                                )}
                               </div>
-                              {/* Standings mini table */}
-                              {done>0&&(
-                                <div style={{padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,0.05)"}}>
-                                  <div style={{fontSize:10,color:C.dim,marginBottom:4,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Bảng xếp hạng</div>
-                                  {standings.map((s,si)=>(
-                                    <div key={s.name} style={{display:"flex",alignItems:"center",gap:8,padding:"3px 0"}}>
-                                      <span style={{fontSize:10,fontWeight:800,color:si===0?C.orange:C.dim,width:14,textAlign:"center"}}>{si+1}</span>
-                                      <span style={{flex:1,fontSize:11,color:si===0?C.text:C.muted,fontWeight:si===0?700:400,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.name}</span>
-                                      <span style={{fontSize:11,color:"#4ADE80",fontWeight:700}}>{s.wins}T</span>
-                                      <span style={{fontSize:11,color:"#EF4444"}}>{s.losses}B</span>
-                                    </div>
-                                  ))}
+                              {isEditing&&(
+                                <div style={{display:"flex",alignItems:"center",gap:6,marginTop:8}}>
+                                  <input value={editingMatchScore.s1} onChange={e=>setEditingMatchScore(v=>({...v,s1:e.target.value}))} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:20,fontWeight:900,padding:"8px 4px"}} maxLength={2}/>
+                                  <span style={{color:C.dim,fontWeight:700}}>–</span>
+                                  <input value={editingMatchScore.s2} onChange={e=>setEditingMatchScore(v=>({...v,s2:e.target.value}))} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:20,fontWeight:900,padding:"8px 4px"}} maxLength={2}/>
+                                  <button onClick={()=>{const s1=parseInt(editingMatchScore.s1),s2=parseInt(editingMatchScore.s2);if(isNaN(s1)||isNaN(s2)){showNotif("Nhập điểm hợp lệ","err");return;}handleUpdateMatchScore(viewTour,m.id,s1,s2);setEditingMatchScore(null);}} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:4}}><Icon n="check" size={13}/>Lưu</button>
+                                  <button onClick={()=>setEditingMatchScore(null)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:8,padding:"8px 10px",cursor:"pointer"}}><Icon n="x" size={13}/></button>
                                 </div>
                               )}
-                              {/* Matches */}
-                              <div style={{padding:"0 0 4px"}}>
-                                {gMatches.map((m,mi)=>{
-                                  const isEditing=editingMatchScore?.matchId===m.id;
-                                  const isDone=m.status==="done";
-                                  return(
-                                  <div key={m.id} style={{padding:"10px 12px",borderBottom:mi!==gMatches.length-1?"1px solid rgba(255,255,255,0.04)":"none",background:isEditing?"rgba(236,122,28,0.06)":"transparent",transition:"background 0.15s"}}>
-                                    {/* Players row */}
-                                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:isEditing?8:0}}>
-                                      <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score1>m.score2?700:500,color:isDone&&m.score1>m.score2?C.orange:C.text,textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p1}</span>
-                                      {isDone?(
-                                        <span style={{fontWeight:900,fontSize:14,color:C.text,flexShrink:0,minWidth:52,textAlign:"center",padding:"3px 8px",background:"rgba(255,255,255,0.07)",borderRadius:6}}>
-                                          {m.score1} - {m.score2}
-                                        </span>
-                                      ):(
-                                        <span style={{fontSize:11,color:C.dim,flexShrink:0,padding:"3px 8px",background:"rgba(255,255,255,0.04)",borderRadius:6,minWidth:52,textAlign:"center"}}>vs</span>
-                                      )}
-                                      <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score2>m.score1?700:500,color:isDone&&m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p2}</span>
-                                      {can("canManageTournament")&&!isEditing&&(
-                                        <div style={{display:"flex",gap:4,flexShrink:0}}>
-                                          <button onClick={()=>setEditingMatchScore({matchId:m.id,s1:isDone?String(m.score1):"",s2:isDone?String(m.score2):""})} style={{background:"rgba(236,122,28,0.12)",border:"none",color:C.orange,borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",gap:3}}>
-                                            <Icon n="edit" size={11}/>{isDone?"Sửa":"Nhập"}
-                                          </button>
-                                          <button onClick={()=>{if(window.confirm("Xóa trận này?"))handleDeleteScheduledMatch(viewTour,m.id);}} style={{background:"rgba(239,68,68,0.08)",border:"none",color:"#EF4444",borderRadius:6,padding:"4px 7px",cursor:"pointer",fontSize:11}}>
-                                            <Icon n="trash" size={11}/>
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
-                                    {/* Score input */}
-                                    {isEditing&&(
-                                      <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                        <input
-                                          value={editingMatchScore.s1}
-                                          onChange={e=>setEditingMatchScore(v=>({...v,s1:e.target.value}))}
-                                          placeholder="0" inputMode="numeric"
-                                          style={{...MS,flex:1,textAlign:"center",fontSize:18,fontWeight:900,padding:"8px 4px"}}
-                                          maxLength={2}
-                                        />
-                                        <span style={{color:C.dim,fontWeight:700,fontSize:14}}>–</span>
-                                        <input
-                                          value={editingMatchScore.s2}
-                                          onChange={e=>setEditingMatchScore(v=>({...v,s2:e.target.value}))}
-                                          placeholder="0" inputMode="numeric"
-                                          style={{...MS,flex:1,textAlign:"center",fontSize:18,fontWeight:900,padding:"8px 4px"}}
-                                          maxLength={2}
-                                        />
-                                        <button onClick={()=>{
-                                          const s1=parseInt(editingMatchScore.s1);
-                                          const s2=parseInt(editingMatchScore.s2);
-                                          if(isNaN(s1)||isNaN(s2)){showNotif("Nhập điểm hợp lệ","err");return;}
-                                          handleUpdateMatchScore(viewTour,m.id,s1,s2);
-                                          setEditingMatchScore(null);
-                                        }} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:13,display:"flex",alignItems:"center",gap:4}}>
-                                          <Icon n="check" size={13}/>Lưu
-                                        </button>
-                                        <button onClick={()=>setEditingMatchScore(null)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:8,padding:"8px 10px",cursor:"pointer",fontSize:13}}>
-                                          <Icon n="x" size={13}/>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                )})}
-                              </div>
                             </div>
                           )})}
                         </div>
-                      )}
+                      )})}
                       {!!legacy.length&&(
-                        <div>
-                          <SectionTitle><Icon n="ping2" size={14} color={C.orange} style={{marginRight:6}}/>Kết quả ({legacy.length} trận)</SectionTitle>
-                          {[...legacy].reverse().map((m,i)=>(
-                            <div key={m.id||i} style={{padding:"10px 0",borderBottom:i!==legacy.length-1?"1px solid rgba(236,122,28,0.07)":"none"}}>
+                        <div style={{background:"rgba(255,255,255,0.025)",borderRadius:14,border:"1px solid "+C.border,overflow:"hidden"}}>
+                          <div style={{padding:"9px 14px",borderBottom:"1px solid rgba(255,255,255,0.05)",fontSize:12,color:C.muted,fontWeight:700}}>Kết quả khác</div>
+                          {legacy.map((m,i)=>(
+                            <div key={m.id||i} style={{padding:"10px 14px",borderBottom:i!==legacy.length-1?"1px solid rgba(255,255,255,0.04)":"none"}}>
                               <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                <span style={{fontSize:10,color:C.dim,flexShrink:0}}>R{m.round}</span>
-                                <div style={{flex:1,display:"flex",alignItems:"center",gap:6,minWidth:0}}>
-                                  <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score1>m.score2?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"right"}}>{(m.team1||[]).join(" & ")}</span>
-                                  <span style={{fontWeight:900,fontSize:15,color:C.text,flexShrink:0,padding:"2px 8px",background:"rgba(255,255,255,0.06)",borderRadius:6}}>{m.score1} - {m.score2}</span>
-                                  <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{(m.team2||[]).join(" & ")}</span>
-                                </div>
+                                <span style={{fontSize:10,color:C.dim}}>R{m.round}</span>
+                                <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score1>m.score2?C.orange:C.text,textAlign:"right"}}>{(m.team1||[]).join(" & ")}</span>
+                                <span style={{fontWeight:900,fontSize:13,padding:"3px 8px",background:"rgba(255,255,255,0.06)",borderRadius:6,flexShrink:0,color:C.text}}>{m.score1} – {m.score2}</span>
+                                <span style={{flex:1,fontSize:12,fontWeight:600,color:m.score2>m.score1?C.orange:C.text}}>{(m.team2||[]).join(" & ")}</span>
                               </div>
                             </div>
                           ))}
@@ -1471,6 +1566,130 @@ export default function App(){
                       )}
                     </div>);
                   })()}
+
+                  {/* ══ TAB: KNOCKOUT ══ */}
+                  {viewTourTab==="knockout"&&!!(viewTour.groups||[]).length&&(()=>{
+                    const kb = knockoutBracket || generateKnockoutFromGroups(viewTour);
+                    if(!kb) return <div style={{textAlign:"center",color:C.dim,padding:"32px 0",fontSize:13}}>Cần chia bảng và có kết quả trước</div>;
+
+                    const KOMatch = ({match,roundLabel,onScore}) => {
+                      const [editing,setEditing] = useState(false);
+                      const [s1,setS1] = useState(match.done?String(match.score1):"");
+                      const [s2,setS2] = useState(match.done?String(match.score2):"");
+                      const isTBD = match.p1?.startsWith("W ")||match.p1?.startsWith("L ")||match.p2?.startsWith("W ")||match.p2?.startsWith("L ");
+                      return(
+                        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:12,border:"1px solid "+(match.done?"rgba(236,122,28,0.35)":"rgba(255,255,255,0.08)"),overflow:"hidden",minWidth:0}}>
+                          {/* Round label */}
+                          <div style={{padding:"5px 12px",background:match.done?"rgba(236,122,28,0.1)":"rgba(255,255,255,0.03)",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <span style={{fontSize:10,fontWeight:800,color:match.done?C.orange:C.dim,letterSpacing:0.8,fontFamily:"'Barlow Condensed',sans-serif"}}>{roundLabel}</span>
+                            {match.done&&<Icon n="check" size={11} color="#4ADE80"/>}
+                          </div>
+                          {/* Players */}
+                          {[{name:match.p1,score:match.score1,won:match.done&&match.score1>match.score2},
+                            {name:match.p2,score:match.score2,won:match.done&&match.score2>match.score1}].map((p,pi)=>(
+                            <div key={pi} style={{padding:"9px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:pi===0?"1px solid rgba(255,255,255,0.05)":"none",background:p.won?"rgba(236,122,28,0.06)":"transparent"}}>
+                              <span style={{flex:1,fontSize:12,fontWeight:p.won?800:500,color:p.won?C.orange:isTBD?"#666":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isTBD?"italic":"normal"}}>{p.name||"TBD"}</span>
+                              {match.done&&<span style={{fontSize:14,fontWeight:900,color:p.won?C.orange:C.muted,minWidth:20,textAlign:"center"}}>{p.score}</span>}
+                            </div>
+                          ))}
+                          {/* Score input */}
+                          {can("canManageTournament")&&!isTBD&&(
+                            <div style={{padding:"6px 10px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                              {!editing?(
+                                <button onClick={()=>{setEditing(true);setS1(match.done?String(match.score1):"");setS2(match.done?String(match.score2):"");}} style={{width:"100%",background:"rgba(236,122,28,0.1)",border:"none",color:C.orange,borderRadius:7,padding:"5px",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
+                                  <Icon n="edit" size={11}/>{match.done?"Sửa kết quả":"Nhập kết quả"}
+                                </button>
+                              ):(
+                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
+                                  <input value={s1} onChange={e=>setS1(e.target.value)} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:16,fontWeight:900,padding:"5px 2px"}} maxLength={2}/>
+                                  <span style={{color:C.dim,fontSize:12}}>–</span>
+                                  <input value={s2} onChange={e=>setS2(e.target.value)} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:16,fontWeight:900,padding:"5px 2px"}} maxLength={2}/>
+                                  <button onClick={()=>{const n1=parseInt(s1),n2=parseInt(s2);if(isNaN(n1)||isNaN(n2))return;onScore(match.id,n1,n2,kb);setEditing(false);}} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontWeight:700,fontSize:11}}><Icon n="check" size={11}/></button>
+                                  <button onClick={()=>setEditing(false)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:7,padding:"5px 8px",cursor:"pointer"}}><Icon n="x" size={11}/></button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    const onScore = (id,s1,s2,bracket) => handleSaveKnockoutScore(viewTour,id,s1,s2,bracket);
+                    const roundLabels = {QF:"Tứ kết",SF:"Bán kết",F:"Chung kết",["3rd"]:"Tranh hạng 3"};
+
+                    return(
+                      <div style={{display:"flex",flexDirection:"column",gap:16}}>
+                        {/* Regenerate button */}
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          <button onClick={()=>setKnockoutBracket(generateKnockoutFromGroups(viewTour))} style={{background:"rgba(236,122,28,0.1)",border:"1px solid rgba(236,122,28,0.25)",color:C.orange,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={12}/>Cập nhật bracket</button>
+                          <span style={{fontSize:10,color:C.dim}}>Dựa trên kết quả bảng đấu</span>
+                        </div>
+
+                        {/* Standings summary */}
+                        <div style={{background:"rgba(255,255,255,0.025)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)",padding:"10px 14px"}}>
+                          <div style={{fontSize:10,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase"}}>VĐV vào vòng knockout</div>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                            {kb.groupStandings.flatMap(g=>g.standings.slice(0,2).map((s,si)=>(
+                              <div key={g.name+s.name} style={{display:"flex",alignItems:"center",gap:5,background:si===0?"rgba(236,122,28,0.1)":"rgba(96,165,250,0.1)",borderRadius:8,padding:"5px 10px",border:"1px solid "+(si===0?"rgba(236,122,28,0.25)":"rgba(96,165,250,0.2)")}}>
+                                <span style={{fontSize:9,fontWeight:800,color:si===0?C.orange:"#60A5FA"}}>{g.name} {si===0?"1st":"2nd"}</span>
+                                <span style={{fontSize:12,fontWeight:700,color:C.text}}>{s.name}</span>
+                                <span style={{fontSize:10,color:si===0?"#4ADE80":"#60A5FA"}}>{s.wins}T</span>
+                              </div>
+                            )))}
+                          </div>
+                        </div>
+
+                        {/* QF bracket */}
+                        {kb.qf.length>0&&(
+                          <div>
+                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="tournament" size={12} color={C.muted}/>Tứ kết</div>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8}}>
+                              {kb.qf.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={"QF "+(i+1)} onScore={onScore}/>)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SF bracket */}
+                        {kb.sf.length>0&&(
+                          <div>
+                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="ranking" size={12} color={C.muted}/>Bán kết</div>
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8}}>
+                              {kb.sf.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={"SF "+(i+1)} onScore={onScore}/>)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Final + 3rd place */}
+                        {kb.final.length>0&&(
+                          <div>
+                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="trophy" size={12} color={"#e6a53a"}/>Chung kết</div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                              {kb.final.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={i===0?"🏆 Chung kết":"Tranh hạng 3"} onScore={onScore}/>)}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Winner podium */}
+                        {kb.final[0]?.done&&(
+                          <div style={{background:"linear-gradient(135deg,rgba(236,122,28,0.15),rgba(230,165,58,0.1))",borderRadius:16,border:"1px solid rgba(236,122,28,0.3)",padding:"20px 16px",textAlign:"center"}}>
+                            <Icon n="trophy" size={32} color="#e6a53a" style={{marginBottom:8}}/>
+                            <div style={{fontSize:11,color:C.muted,marginBottom:4,letterSpacing:1,textTransform:"uppercase",fontWeight:700}}>Vô địch</div>
+                            <div style={{fontSize:22,fontWeight:900,color:C.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>
+                              {kb.final[0].score1>kb.final[0].score2?kb.final[0].p1:kb.final[0].p2}
+                            </div>
+                            <div style={{fontSize:13,color:C.muted,marginTop:4}}>{kb.final[0].score1} – {kb.final[0].score2}</div>
+                            {kb.final[1]?.done&&(
+                              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:12,color:C.dim}}>
+                                🥉 Hạng 3: <span style={{color:C.text,fontWeight:700}}>{kb.final[1].score1>kb.final[1].score2?kb.final[1].p1:kb.final[1].p2}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  </div>
                 </div>
               </div>
             )}
