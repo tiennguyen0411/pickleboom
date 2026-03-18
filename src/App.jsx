@@ -46,6 +46,22 @@ function Icon({n,size=18,color,style={}}) {
   return <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:size,height:size,flexShrink:0,color:color||"currentColor",...style}}>{IC[n]||null}</span>;
 }
 
+// ── Cover Image Reader ──────────────────────────────────────────
+function readFileAsBase64(file){
+  return new Promise((res,rej)=>{
+    const r=new FileReader();
+    r.onload=()=>res(r.result);
+    r.onerror=rej;
+    r.readAsDataURL(file);
+  });
+}
+
+// ── Share Link Util ─────────────────────────────────────────────
+function getTourShareUrl(tourId){
+  const base = window.location.origin+window.location.pathname;
+  return base+"?reg="+tourId;
+}
+
 const TIER_COLORS = {
   "1+":"#ec7a1c","1-":"#f4954a","2++":"#e6a53a","2+":"#d4b870",
   "2":"#44443b","2-":"#7a7a6e","3+":"#a09e95","3":"#c8c5be",
@@ -271,7 +287,7 @@ export default function App(){
   const [tournaments,setTournaments]=useState([]);
   const [showTourModal,setShowTourModal]=useState(false);
   const [editTourModal,setEditTourModal]=useState(null); // tour being edited
-  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3"});
+  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:""});
   const [activeTour,setActiveTour]=useState(null);
   const [showMatchModal,setShowMatchModal]=useState(false);
   const [matchForm,setMatchForm]=useState({p1:"",p2:"",p3:"",p4:"",score1:"",score2:"",round:"1"});
@@ -326,6 +342,7 @@ export default function App(){
           ...t,
           matches: typeof t.matches==="string" ? JSON.parse(t.matches||"[]") : (t.matches||[]),
           tourRegs: typeof t.tour_regs==="string" ? JSON.parse(t.tour_regs||"[]") : (t.tour_regs||[]),
+          cover: t.cover||"",
           groups: typeof t.groups==="string" ? JSON.parse(t.groups||"[]") : (t.groups||[]),
         }));
         setTournaments(tours);
@@ -341,6 +358,23 @@ export default function App(){
   };
 
   useEffect(()=>{ loadFromDB(); }, []);
+
+  // Auto-open reg form from share link ?reg=tourId
+  useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const regId=params.get("reg");
+    if(regId&&tournaments.length){
+      const tour=tournaments.find(t=>String(t.id)===String(regId));
+      if(tour&&tour.status==="active"){
+        setShowTourRegForm(tour);
+        setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":"double",partner:"",note:""});
+        setTourRegSubmitted(false);
+        setTab("tournament");
+        // Clean URL without reload
+        window.history.replaceState({},"",window.location.pathname);
+      }
+    }
+  },[tournaments]);
 
   const seedDatabase = async () => {
     const allInit = [
@@ -547,10 +581,10 @@ export default function App(){
     if(!tourForm.name.trim()||!tourForm.date.trim()) return;
     const id = Date.now();
     const pin = tourForm.pin.trim() || Math.floor(1000+Math.random()*9000).toString();
-    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN"), pin, bestOf:parseInt(tourForm.bestOf)||3};
+    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN"), pin, bestOf:parseInt(tourForm.bestOf)||3, cover:tourForm.cover||""};
     setTournaments(prev=>[tour,...prev]);
     setShowTourModal(false);
-    setTourForm({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3"});
+    setTourForm({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:""});
     setActiveTour(tour);
     setTab("tournament");
     showNotif("Đã tạo giải: "+tour.name);
@@ -568,6 +602,7 @@ export default function App(){
         created: tour.created,
         pin: tour.pin,
         best_of: tour.bestOf,
+        cover: tour.cover||"",
       };
       await sbFetch("tournaments", {method:"POST", headers:{"Prefer":"return=minimal"}, body:JSON.stringify(payload)});
     } catch(e){console.error("create tour error:",e);}
@@ -610,6 +645,7 @@ export default function App(){
       note: form.note.trim(),
       pin: form.pin.trim()||tour.pin,
       bestOf: parseInt(form.bestOf)||3,
+      cover: form.cover!==undefined ? form.cover : (tour.cover||""),
     };
     setTournaments(prev=>prev.map(t=>t.id===tour.id?updated:t));
     if(activeTour?.id===tour.id) setActiveTour(updated);
@@ -625,6 +661,7 @@ export default function App(){
         note: updated.note,
         pin: updated.pin,
         best_of: updated.bestOf,
+        cover: updated.cover||"",
       })});
     } catch(e){console.error("update tour error:",e);}
   };
@@ -1330,25 +1367,42 @@ export default function App(){
               const pendingCount=(tour.tourRegs||[]).filter(r=>r.status==="pending").length;
               const approvedCount=(tour.tourRegs||[]).filter(r=>r.status==="approved").length;
               return(
-              <Card key={tour.id}>
+              <Card key={tour.id} style={{padding:0,overflow:"hidden"}}>
+                {/* Cover image */}
+                {tour.cover&&(
+                  <div onClick={()=>setViewTour(tour)} style={{cursor:"pointer",position:"relative",height:130,overflow:"hidden",borderRadius:"6px 6px 0 0"}}>
+                    <img src={tour.cover} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                    <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(0,0,0,0.1) 0%,rgba(28,28,22,0.85) 100%)"}}/>
+                    <div style={{position:"absolute",bottom:10,left:14,right:14}}>
+                      <div style={{fontWeight:900,fontSize:16,color:"#fff",textShadow:"0 1px 4px rgba(0,0,0,0.6)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tour.name}</div>
+                      <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,fontWeight:700,background:tour.status==="active"?"rgba(74,222,128,0.85)":"rgba(107,114,128,0.85)",color:"#fff",display:"inline-block",marginTop:3}}>{tour.status==="active"?"● Đang diễn":"○ Kết thúc"}</span>
+                    </div>
+                  </div>
+                )}
+                <div style={{padding:14}}>
                 <div onClick={()=>setViewTour(tour)} style={{cursor:"pointer"}}>
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                  {!tour.cover&&<div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
                     <div style={{fontWeight:800,fontSize:15,color:C.text,flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{tour.name}</div>
                     <span style={{fontSize:10,padding:"3px 8px",borderRadius:10,fontWeight:700,background:tour.status==="active"?"rgba(74,222,128,0.15)":"rgba(107,114,128,0.15)",color:tour.status==="active"?"#4ADE80":"#6B7280",flexShrink:0,marginLeft:8}}>{tour.status==="active"?"● Đang diễn":"○ Kết thúc"}</span>
-                  </div>
+                  </div>}
                   <div style={{fontSize:11,color:C.dim,display:"flex",gap:10,flexWrap:"wrap",marginBottom:6}}>
                     <span style={{display:"flex",alignItems:"center",gap:4}}><Icon n="calendar" size={12} color={C.muted}/>{tour.date}</span>
-                    <span> {tour.format==="single"?"Đơn":tour.format==="double"?"Đôi":"Hỗn hợp"}</span>
+                    <span>{tour.format==="single"?"Đơn":tour.format==="double"?"Đôi":"Hỗn hợp"}</span>
                     <span style={{display:"flex",alignItems:"center",gap:4}}><Icon n="ping2" size={12} color={C.muted}/>{(tour.matches||[]).length} trận</span>
                     <span style={{color:"#4ADE80",fontWeight:600}}>✓ {approvedCount} VĐV</span>
-                    {pendingCount&&can("canApproveTourReg")?<span style={{color:"#FBbF24",fontWeight:700}}> {pendingCount} chờ duyệt</span>:null}
+                    {pendingCount&&can("canApproveTourReg")?<span style={{color:"#FBbF24",fontWeight:700}}>{pendingCount} chờ duyệt</span>:null}
                   </div>
-                  {tour.note&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic"}}>{tour.note}</div>}
+                  {tour.note&&<div style={{fontSize:11,color:C.muted,fontStyle:"italic",marginBottom:4}}>{tour.note}</div>}
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
                   {tour.status==="active"&&(
                     <button onClick={e=>{e.stopPropagation();setShowTourRegForm(tour);setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":"double",partner:"",note:""}); setTourRegSubmitted(false);}} style={{flex:1,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
-                      <Icon n="register" size={13} style={{marginRight:4}}/>Đăng ký thi đấu
+                      <Icon n="register" size={13} style={{marginRight:4}}/>Đăng ký
+                    </button>
+                  )}
+                  {tour.status==="active"&&(
+                    <button onClick={e=>{e.stopPropagation();const url=getTourShareUrl(tour.id);if(navigator.share){navigator.share({title:"Đăng ký: "+tour.name,text:"Đăng ký tham gia giải Pickleball "+tour.name+" ngày "+tour.date,url}).catch(()=>{});}else{navigator.clipboard.writeText(url).then(()=>showNotif("Đã sao chép link đăng ký!")).catch(()=>showNotif("Không thể sao chép","err"));}}} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",color:"#60A5FA",borderRadius:8,padding:"8px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                      <Icon n="fb" size={13}/>Share
                     </button>
                   )}
                   {can("canManageTournament")&&(
@@ -1360,6 +1414,7 @@ export default function App(){
                     </>
                   )}
                 </div>
+                </div>
               </Card>
               );
             })}
@@ -1368,9 +1423,27 @@ export default function App(){
                 <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"93vh",display:"flex",flexDirection:"column",border:"1px solid "+C.border,boxShadow:"0 -8px 40px rgba(0,0,0,0.6)"}}>
                   {/* Drag handle */}
                   <div style={{width:44,height:5,background:"rgba(255,255,255,0.18)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+                  {/* Cover image inside modal */}
+                  {viewTour.cover&&(
+                    <div style={{position:"relative",height:150,margin:"10px 0 0",overflow:"hidden",flexShrink:0}}>
+                      <img src={viewTour.cover} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,rgba(0,0,0,0.05) 0%,rgba(28,28,22,0.92) 100%)"}}/>
+                      <div style={{position:"absolute",bottom:12,left:18,right:52}}>
+                        <div style={{fontWeight:900,fontSize:18,color:"#fff",textShadow:"0 1px 6px rgba(0,0,0,0.7)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
+                        <div style={{fontSize:11,color:"rgba(255,255,255,0.75)",display:"flex",gap:8,marginTop:3}}>
+                          <span style={{display:"flex",alignItems:"center",gap:3}}><Icon n="calendar" size={11}/>{viewTour.date}</span>
+                          <span>{viewTour.format==="single"?"Đơn":viewTour.format==="double"?"Đôi":"Hỗn hợp"}</span>
+                          <span style={{color:viewTour.status==="active"?"#4ADE80":"#aaa",fontWeight:700}}>{viewTour.status==="active"?"● Đang diễn":"○ Kết thúc"}</span>
+                        </div>
+                      </div>
+                      <button onClick={()=>{setViewTour(null);setViewTourTab("groups");setKnockoutBracket(null);}} style={{position:"absolute",top:10,right:14,background:"rgba(0,0,0,0.5)",border:"none",color:"#fff",borderRadius:10,width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+                        <Icon n="x" size={15}/>
+                      </button>
+                    </div>
+                  )}
                   {/* Header */}
                   <div style={{padding:"12px 18px 0",flexShrink:0}}>
-                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
+                    {!viewTour.cover&&<div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:8,marginBottom:8}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontWeight:900,fontSize:17,color:C.orange,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{viewTour.name}</div>
                         <div style={{fontSize:11,color:C.muted,display:"flex",gap:8,flexWrap:"wrap",marginTop:3}}>
@@ -1382,10 +1455,15 @@ export default function App(){
                       <button onClick={()=>{setViewTour(null);setViewTourTab("groups");setKnockoutBracket(null);}} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:10,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                         <Icon n="x" size={16}/>
                       </button>
-                    </div>
+                    </div>}
                     {/* Admin action buttons */}
                     {(can("canManageTournament")||can("canApproveTourReg"))&&(
                       <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+                        {viewTour.status==="active"&&(
+                          <button onClick={()=>{const url=getTourShareUrl(viewTour.id);if(navigator.share){navigator.share({title:"Đăng ký: "+viewTour.name,text:"Đăng ký tham gia giải Pickleball "+viewTour.name+" ngày "+viewTour.date,url}).catch(()=>{});}else{navigator.clipboard.writeText(url).then(()=>showNotif("Đã sao chép link đăng ký!")).catch(()=>showNotif("Không thể sao chép","err"));}}} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.25)",color:"#60A5FA",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
+                            <Icon n="fb" size={12}/>Share link
+                          </button>
+                        )}
                         {can("canManageTournament")&&viewTour.status==="active"&&<button onClick={()=>setShowMatchModal(true)} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="plus" size={12}/>Thêm trận</button>}
                         {can("canManageTournament")&&<button onClick={()=>openGroupDraw(viewTour)} style={{background:"rgba(96,165,250,0.12)",border:"1px solid rgba(96,165,250,0.3)",color:"#f4954a",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="target" size={12}/>Chia bảng</button>}
                         {(can("canManageTournament")||can("canApproveTourReg"))&&<button onClick={()=>setShowTourRegAdmin(viewTour)} style={{position:"relative",background:"rgba(251,191,36,0.12)",border:"1px solid rgba(251,191,36,0.3)",color:"#FBbF24",borderRadius:8,padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
@@ -2152,10 +2230,41 @@ export default function App(){
 
       {showTourModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-end",zIndex:200,animation:"fadeIn 0.2s ease"}}>
-          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"80vh",overflowY:"auto",padding:20,border:"1px solid "+C.border}}>
-            <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 16px"}}/>
-            <SectionTitle><Icon n="tournament" size={14} color={C.orange} style={{marginRight:6}}/>Tạo giải đấu mới</SectionTitle>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column",border:"1px solid "+C.border}}>
+            <div style={{width:44,height:5,background:"rgba(255,255,255,0.18)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+            <div style={{padding:"12px 18px 0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontWeight:900,fontSize:16,color:C.orange,display:"flex",alignItems:"center",gap:6}}><Icon n="tournament" size={15}/>Tạo giải đấu mới</div>
+              <button onClick={()=>setShowTourModal(false)} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:10,width:36,height:36,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={16}/></button>
+            </div>
+            <div style={{overflowY:"auto",flex:1,padding:"14px 18px",display:"flex",flexDirection:"column",gap:12}}>
+              {/* Cover image upload */}
+              <div>
+                <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Ảnh cover giải đấu</div>
+                <label style={{display:"block",cursor:"pointer"}}>
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+                    const file=e.target.files[0];
+                    if(!file) return;
+                    if(file.size>3*1024*1024){showNotif("Ảnh tối đa 3MB","err");return;}
+                    const b64=await readFileAsBase64(file);
+                    setTourForm(f=>({...f,cover:b64}));
+                  }}/>
+                  {tourForm.cover?(
+                    <div style={{position:"relative",borderRadius:12,overflow:"hidden",height:140}}>
+                      <img src={tourForm.cover} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.35)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,background:"rgba(0,0,0,0.5)",padding:"6px 14px",borderRadius:20,display:"flex",alignItems:"center",gap:5}}><Icon n="edit" size={12}/>Đổi ảnh</span>
+                      </div>
+                      <button onMouseDown={e=>{e.preventDefault();e.stopPropagation();setTourForm(f=>({...f,cover:""}));}} style={{position:"absolute",top:8,right:8,background:"rgba(239,68,68,0.85)",border:"none",color:"#fff",borderRadius:20,width:28,height:28,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}><Icon n="x" size={13}/></button>
+                    </div>
+                  ):(
+                    <div style={{height:120,borderRadius:12,border:"2px dashed rgba(236,122,28,0.35)",background:"rgba(236,122,28,0.04)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                      <Icon n="plus" size={22} color="rgba(236,122,28,0.5)"/>
+                      <span style={{fontSize:12,color:C.muted}}>Chạm để tải ảnh cover</span>
+                      <span style={{fontSize:10,color:C.dim}}>JPG, PNG · tối đa 3MB</span>
+                    </div>
+                  )}
+                </label>
+              </div>
               <input placeholder="Tên giải *" value={tourForm.name} onChange={e=>setTourForm(f=>({...f,name:e.target.value}))} style={MS}/>
               <input type="date" value={tourForm.date} onChange={e=>setTourForm(f=>({...f,date:e.target.value}))} style={MS}/>
               <select value={tourForm.format} onChange={e=>setTourForm(f=>({...f,format:e.target.value}))} style={MS}>
@@ -2171,10 +2280,9 @@ export default function App(){
               </div>
               <input placeholder="Mã PIN trọng tài (tự động nếu trống)" value={tourForm.pin} onChange={e=>setTourForm(f=>({...f,pin:e.target.value}))} style={MS}/>
               <input placeholder="Ghi chú (tùy chọn)" value={tourForm.note} onChange={e=>setTourForm(f=>({...f,note:e.target.value}))} style={MS}/>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setShowTourModal(false)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Hủy</button>
-                <button onClick={handleCreateTour} style={{flex:2,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Tạo giải</button>
-              </div>
+            </div>
+            <div style={{padding:"12px 18px",borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
+              <button onClick={handleCreateTour} style={{width:"100%",background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:12,padding:"15px",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><Icon n="plus" size={16}/>Tạo giải đấu</button>
             </div>
           </div>
         </div>
@@ -2182,10 +2290,40 @@ export default function App(){
 
       {editTourModal&&(
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.88)",display:"flex",alignItems:"flex-end",zIndex:202,animation:"fadeIn 0.2s ease"}}>
-          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"20px 20px 0 0",width:"100%",maxHeight:"80vh",overflowY:"auto",padding:20,border:"1px solid "+C.border}}>
-            <div style={{width:40,height:4,background:"rgba(255,255,255,0.2)",borderRadius:4,margin:"0 auto 16px"}}/>
-            <SectionTitle><Icon n="edit" size={14} color={C.orange} style={{marginRight:6}}/>Sửa giải: {editTourModal.tour.name}</SectionTitle>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{background:"linear-gradient(160deg,#28281f 0%,#333329 100%)",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"90vh",display:"flex",flexDirection:"column",border:"1px solid "+C.border}}>
+            <div style={{width:44,height:5,background:"rgba(255,255,255,0.18)",borderRadius:4,margin:"12px auto 0",flexShrink:0}}/>
+            <div style={{padding:"12px 18px 0",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{fontWeight:900,fontSize:15,color:C.orange,display:"flex",alignItems:"center",gap:6}}><Icon n="edit" size={14}/>Sửa giải đấu</div>
+              <button onClick={()=>setEditTourModal(null)} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.1)",color:C.muted,borderRadius:10,width:34,height:34,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={15}/></button>
+            </div>
+            <div style={{overflowY:"auto",flex:1,padding:"14px 18px",display:"flex",flexDirection:"column",gap:12}}>
+              {/* Cover image */}
+              <div>
+                <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Ảnh cover</div>
+                <label style={{display:"block",cursor:"pointer"}}>
+                  <input type="file" accept="image/*" style={{display:"none"}} onChange={async e=>{
+                    const file=e.target.files[0];
+                    if(!file) return;
+                    if(file.size>3*1024*1024){showNotif("Ảnh tối đa 3MB","err");return;}
+                    const b64=await readFileAsBase64(file);
+                    setEditTourModal(m=>({...m,form:{...m.form,cover:b64}}));
+                  }}/>
+                  {(editTourModal.form.cover||editTourModal.tour.cover)?(
+                    <div style={{position:"relative",borderRadius:12,overflow:"hidden",height:120}}>
+                      <img src={editTourModal.form.cover||editTourModal.tour.cover} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <span style={{color:"#fff",fontSize:12,fontWeight:700,background:"rgba(0,0,0,0.5)",padding:"5px 12px",borderRadius:20,display:"flex",alignItems:"center",gap:5}}><Icon n="edit" size={11}/>Đổi ảnh</span>
+                      </div>
+                      <button onMouseDown={e=>{e.preventDefault();e.stopPropagation();setEditTourModal(m=>({...m,form:{...m.form,cover:""}}));}} style={{position:"absolute",top:7,right:7,background:"rgba(239,68,68,0.85)",border:"none",color:"#fff",borderRadius:20,width:26,height:26,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}><Icon n="x" size={12}/></button>
+                    </div>
+                  ):(
+                    <div style={{height:90,borderRadius:12,border:"2px dashed rgba(236,122,28,0.3)",background:"rgba(236,122,28,0.03)",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
+                      <Icon n="plus" size={18} color="rgba(236,122,28,0.45)"/>
+                      <span style={{fontSize:11,color:C.dim}}>Thêm ảnh cover</span>
+                    </div>
+                  )}
+                </label>
+              </div>
               <input placeholder="Tên giải *" value={editTourModal.form.name} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,name:e.target.value}}))} style={MS}/>
               <input type="date" value={editTourModal.form.date} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,date:e.target.value}}))} style={MS}/>
               <select value={editTourModal.form.format} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,format:e.target.value}}))} style={MS}>
@@ -2201,10 +2339,9 @@ export default function App(){
               </div>
               <input placeholder="Mã PIN trọng tài" value={editTourModal.form.pin} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,pin:e.target.value}}))} style={MS}/>
               <input placeholder="Ghi chú" value={editTourModal.form.note} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,note:e.target.value}}))} style={MS}/>
-              <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>setEditTourModal(null)} style={{flex:1,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",color:C.muted,borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Hủy</button>
-                <button onClick={handleUpdateTour} style={{flex:2,background:"linear-gradient(90deg,#60A5FA,#3B82F6)",border:"none",color:"#fff",borderRadius:10,padding:"13px",cursor:"pointer",fontSize:15,fontWeight:700}}>Lưu thay đổi</button>
-              </div>
+            </div>
+            <div style={{padding:"12px 18px",borderTop:"1px solid rgba(255,255,255,0.06)",flexShrink:0}}>
+              <button onClick={handleUpdateTour} style={{width:"100%",background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:12,padding:"15px",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}><Icon n="check" size={16}/>Lưu thay đổi</button>
             </div>
           </div>
         </div>
