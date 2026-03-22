@@ -287,7 +287,7 @@ export default function App(){
   const [tournaments,setTournaments]=useState([]);
   const [showTourModal,setShowTourModal]=useState(false);
   const [editTourModal,setEditTourModal]=useState(null); // tour being edited
-  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:""});
+  const [tourForm,setTourForm]=useState({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:"",rrLegs:"1",maxPerGroup:"4"});
   const [activeTour,setActiveTour]=useState(null);
   const [showMatchModal,setShowMatchModal]=useState(false);
   const [matchForm,setMatchForm]=useState({p1:"",p2:"",p3:"",p4:"",score1:"",score2:"",round:"1"});
@@ -314,7 +314,7 @@ export default function App(){
   const [refGames,setRefGames]=useState([]); // [{g1t1,g1t2},{g2t1,g2t2},...] each game score
   const [refConfirmed,setRefConfirmed]=useState(false);
   const [showGroupDrawModal,setShowGroupDrawModal]=useState(null); // tour object
-  const [groupConfig,setGroupConfig]=useState({numGroups:2,seedBy:"tier",players:[]});
+  const [groupConfig,setGroupConfig]=useState({numGroups:2,seedBy:"tier",players:[],rrLegs:1,maxPerGroup:4});
   const [editingMatchScore,setEditingMatchScore]=useState(null); // {matchId,s1,s2}
   const [viewTourTab,setViewTourTab]=useState("groups"); // "groups"|"schedule"|"knockout"
   const [knockoutBracket,setKnockoutBracket]=useState(null); // generated bracket
@@ -343,6 +343,8 @@ export default function App(){
           matches: typeof t.matches==="string" ? JSON.parse(t.matches||"[]") : (t.matches||[]),
           tourRegs: typeof t.tour_regs==="string" ? JSON.parse(t.tour_regs||"[]") : (t.tour_regs||[]),
           cover: t.cover||"",
+          rrLegs: t.rr_legs||1,
+          maxPerGroup: t.max_per_group||4,
           groups: typeof t.groups==="string" ? JSON.parse(t.groups||"[]") : (t.groups||[]),
         }));
         setTournaments(tours);
@@ -367,7 +369,7 @@ export default function App(){
       const tour=tournaments.find(t=>String(t.id)===String(regId));
       if(tour&&tour.status==="active"){
         setShowTourRegForm(tour);
-        setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":"double",partner:"",note:""});
+        setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":tour.format==="mixed"?"mixed":"double",partner:"",note:""});
         setTourRegSubmitted(false);
         setTab("tournament");
         // Clean URL without reload
@@ -581,10 +583,10 @@ export default function App(){
     if(!tourForm.name.trim()||!tourForm.date.trim()) return;
     const id = Date.now();
     const pin = tourForm.pin.trim() || Math.floor(1000+Math.random()*9000).toString();
-    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN"), pin, bestOf:parseInt(tourForm.bestOf)||3, cover:tourForm.cover||""};
+    const tour = {id, name:tourForm.name.trim(), date:tourForm.date, format:tourForm.format, rounds:parseInt(tourForm.rounds)||1, note:tourForm.note.trim(), matches:[], status:"active", created:new Date().toLocaleString("vi-VN"), pin, bestOf:parseInt(tourForm.bestOf)||3, cover:tourForm.cover||"", rrLegs:parseInt(tourForm.rrLegs)||1, maxPerGroup:parseInt(tourForm.maxPerGroup)||4};
     setTournaments(prev=>[tour,...prev]);
     setShowTourModal(false);
-    setTourForm({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:""});
+    setTourForm({name:"",date:"",format:"double",rounds:"1",note:"",pin:"",bestOf:"3",cover:"",rrLegs:"1",maxPerGroup:"4"});
     setActiveTour(tour);
     setTab("tournament");
     showNotif("Đã tạo giải: "+tour.name);
@@ -603,6 +605,8 @@ export default function App(){
         pin: tour.pin,
         best_of: tour.bestOf,
         cover: tour.cover||"",
+        rr_legs: tour.rrLegs||1,
+        max_per_group: tour.maxPerGroup||4,
       };
       await sbFetch("tournaments", {method:"POST", headers:{"Prefer":"return=minimal"}, body:JSON.stringify(payload)});
     } catch(e){console.error("create tour error:",e);}
@@ -646,6 +650,8 @@ export default function App(){
       pin: form.pin.trim()||tour.pin,
       bestOf: parseInt(form.bestOf)||3,
       cover: form.cover!==undefined ? form.cover : (tour.cover||""),
+      rrLegs: parseInt(form.rrLegs)||1,
+      maxPerGroup: parseInt(form.maxPerGroup)||4,
     };
     setTournaments(prev=>prev.map(t=>t.id===tour.id?updated:t));
     if(activeTour?.id===tour.id) setActiveTour(updated);
@@ -662,6 +668,8 @@ export default function App(){
         pin: updated.pin,
         best_of: updated.bestOf,
         cover: updated.cover||"",
+        rr_legs: updated.rrLegs||1,
+        max_per_group: updated.maxPerGroup||4,
       })});
     } catch(e){console.error("update tour error:",e);}
   };
@@ -769,7 +777,8 @@ export default function App(){
       else { entries.push({name:r.playerName+(r.partner?" / "+r.partner:""),boom:(findBoom(r.playerName)+(r.partner?findBoom(r.partner):0))/(r.partner?2:1),regId:r.id,type:r.content,partner:r.partner||""}); }
     });
     const entries2 = entries;
-    setGroupConfig({numGroups:Math.min(4,Math.max(2,Math.ceil(entries2.length/4))),seedBy:"tier",players:entries2.map(p=>({...p,selected:true}))});
+    const rrLegs = tour.rrLegs||1; const maxPG = tour.maxPerGroup||4;
+    setGroupConfig({numGroups:Math.min(4,Math.max(2,Math.ceil(entries2.length/maxPG))),seedBy:"tier",players:entries2.map(p=>({...p,selected:true})),rrLegs,maxPerGroup:maxPG});
     setShowGroupDrawModal(tour);
   };
   const handleGenerateGroups = async () => {
@@ -808,19 +817,26 @@ export default function App(){
   const handleAutoGenerateMatches = async (tour) => {
     const groups = tour.groups || [];
     if(!groups.length){ showNotif("Cần chia bảng trước","err"); return; }
+    const legs = tour.rrLegs || 1;
     const newMatches = [];
     groups.forEach(g => {
       const ps = g.players || [];
-      for(let i=0;i<ps.length;i++){
-        for(let j=i+1;j<ps.length;j++){
-          newMatches.push({
-            id: Date.now()+"-"+Math.random().toString(36).slice(2,7),
-            group: g.name,
-            p1: ps[i], p2: ps[j],
-            score1: null, score2: null,
-            status: "pending",
-            date: new Date().toLocaleDateString("vi-VN"),
-          });
+      for(let leg=0;leg<legs;leg++){
+        for(let i=0;i<ps.length;i++){
+          for(let j=i+1;j<ps.length;j++){
+            // In leg 2 swap home/away
+            const p1 = leg%2===0 ? ps[i] : ps[j];
+            const p2 = leg%2===0 ? ps[j] : ps[i];
+            newMatches.push({
+              id: Date.now()+"-"+leg+"-"+Math.random().toString(36).slice(2,7),
+              group: g.name,
+              leg: leg+1,
+              p1, p2,
+              score1: null, score2: null,
+              status: "pending",
+              date: new Date().toLocaleDateString("vi-VN"),
+            });
+          }
         }
       }
     });
@@ -1396,7 +1412,7 @@ export default function App(){
                 </div>
                 <div style={{display:"flex",gap:6,marginTop:10,flexWrap:"wrap"}}>
                   {tour.status==="active"&&(
-                    <button onClick={e=>{e.stopPropagation();setShowTourRegForm(tour);setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":"double",partner:"",note:""}); setTourRegSubmitted(false);}} style={{flex:1,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
+                    <button onClick={e=>{e.stopPropagation();setShowTourRegForm(tour);setTourRegForm({tourId:String(tour.id),playerName:"",contact:"",content:tour.format==="single"?"single":tour.format==="mixed"?"mixed":"double",partner:"",note:""}); setTourRegSubmitted(false);}} style={{flex:1,background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:8,padding:"8px",cursor:"pointer",fontSize:12,fontWeight:700}}>
                       <Icon n="register" size={13} style={{marginRight:4}}/>Đăng ký
                     </button>
                   )}
@@ -1602,7 +1618,7 @@ export default function App(){
                                 {isDone?(
                                   <span style={{fontWeight:900,fontSize:14,flexShrink:0,minWidth:56,textAlign:"center",padding:"4px 8px",background:"rgba(255,255,255,0.07)",borderRadius:8,color:C.text}}>{m.score1} – {m.score2}</span>
                                 ):(
-                                  <span style={{fontSize:11,color:C.dim,flexShrink:0,padding:"4px 10px",background:"rgba(255,255,255,0.04)",borderRadius:8,minWidth:56,textAlign:"center"}}>vs</span>
+                                  <span style={{fontSize:11,color:C.dim,flexShrink:0,padding:"4px 8px",background:"rgba(255,255,255,0.04)",borderRadius:8,minWidth:44,textAlign:"center"}}>{m.leg>1?"L"+m.leg+" vs":"vs"}</span>
                                 )}
                                 <span style={{flex:1,fontSize:12,fontWeight:isDone&&m.score2>m.score1?700:500,color:isDone&&m.score2>m.score1?C.orange:C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.p2}</span>
                                 {can("canManageTournament")&&!isEditing&&(
@@ -1650,40 +1666,48 @@ export default function App(){
                     const kb = knockoutBracket || generateKnockoutFromGroups(viewTour);
                     if(!kb) return <div style={{textAlign:"center",color:C.dim,padding:"32px 0",fontSize:13}}>Cần chia bảng và có kết quả trước</div>;
 
-                    const KOMatch = ({match,roundLabel,onScore}) => {
+                    const onScore = (id,s1,s2,bracket) => handleSaveKnockoutScore(viewTour,id,s1,s2,bracket);
+
+                    // ── KOMatchCard: compact card for tree view ──────────
+                    const KOMatchCard = ({match,onScore,kb,compact=false}) => {
                       const [editing,setEditing] = useState(false);
-                      const [s1,setS1] = useState(match.done?String(match.score1):"");
-                      const [s2,setS2] = useState(match.done?String(match.score2):"");
-                      const isTBD = match.p1?.startsWith("W ")||match.p1?.startsWith("L ")||match.p2?.startsWith("W ")||match.p2?.startsWith("L ");
+                      const [s1,setS1] = useState("");
+                      const [s2,setS2] = useState("");
+                      const isTBD = !match || match.p1?.startsWith("W ")||match.p1?.startsWith("L ")||match.p2?.startsWith("W ")||match.p2?.startsWith("L ");
+                      const isDone = match?.done;
+                      const w1 = isDone && match.score1 > match.score2;
+                      const w2 = isDone && match.score2 > match.score1;
+                      if(!match) return <div style={{width:compact?140:160,height:72,borderRadius:10,border:"1px dashed rgba(255,255,255,0.1)",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{fontSize:10,color:C.dim}}>TBD</span></div>;
                       return(
-                        <div style={{background:"rgba(255,255,255,0.04)",borderRadius:12,border:"1px solid "+(match.done?"rgba(236,122,28,0.35)":"rgba(255,255,255,0.08)"),overflow:"hidden",minWidth:0}}>
-                          {/* Round label */}
-                          <div style={{padding:"5px 12px",background:match.done?"rgba(236,122,28,0.1)":"rgba(255,255,255,0.03)",borderBottom:"1px solid rgba(255,255,255,0.05)",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                            <span style={{fontSize:10,fontWeight:800,color:match.done?C.orange:C.dim,letterSpacing:0.8,fontFamily:"'Barlow Condensed',sans-serif"}}>{roundLabel}</span>
-                            {match.done&&<Icon n="check" size={11} color="#4ADE80"/>}
-                          </div>
-                          {/* Players */}
-                          {[{name:match.p1,score:match.score1,won:match.done&&match.score1>match.score2},
-                            {name:match.p2,score:match.score2,won:match.done&&match.score2>match.score1}].map((p,pi)=>(
-                            <div key={pi} style={{padding:"9px 12px",display:"flex",alignItems:"center",gap:8,borderBottom:pi===0?"1px solid rgba(255,255,255,0.05)":"none",background:p.won?"rgba(236,122,28,0.06)":"transparent"}}>
-                              <span style={{flex:1,fontSize:12,fontWeight:p.won?800:500,color:p.won?C.orange:isTBD?"#666":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isTBD?"italic":"normal"}}>{p.name||"TBD"}</span>
-                              {match.done&&<span style={{fontSize:14,fontWeight:900,color:p.won?C.orange:C.muted,minWidth:20,textAlign:"center"}}>{p.score}</span>}
+                        <div style={{width:compact?140:164,flexShrink:0}}>
+                          <div style={{background:isDone?"rgba(236,122,28,0.08)":"rgba(255,255,255,0.04)",borderRadius:10,border:"1px solid "+(isDone?"rgba(236,122,28,0.4)":"rgba(255,255,255,0.1)"),overflow:"hidden",boxShadow:isDone?"0 2px 12px rgba(236,122,28,0.15)":"none"}}>
+                            {/* Player 1 */}
+                            <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",borderBottom:"1px solid rgba(255,255,255,0.06)",background:w1?"rgba(236,122,28,0.1)":"transparent"}}>
+                              {isDone&&<div style={{width:4,height:4,borderRadius:"50%",background:w1?"#4ADE80":"transparent",flexShrink:0}}/>}
+                              <span style={{flex:1,fontSize:11,fontWeight:w1?800:500,color:w1?C.orange:isTBD?"#555":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isTBD?"italic":"normal"}}>{match.p1||"TBD"}</span>
+                              {isDone&&<span style={{fontSize:13,fontWeight:900,color:w1?C.orange:C.muted,minWidth:16,textAlign:"right",flexShrink:0}}>{match.score1}</span>}
                             </div>
-                          ))}
-                          {/* Score input */}
+                            {/* Player 2 */}
+                            <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 10px",background:w2?"rgba(236,122,28,0.1)":"transparent"}}>
+                              {isDone&&<div style={{width:4,height:4,borderRadius:"50%",background:w2?"#4ADE80":"transparent",flexShrink:0}}/>}
+                              <span style={{flex:1,fontSize:11,fontWeight:w2?800:500,color:w2?C.orange:isTBD?"#555":C.text,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",fontStyle:isTBD?"italic":"normal"}}>{match.p2||"TBD"}</span>
+                              {isDone&&<span style={{fontSize:13,fontWeight:900,color:w2?C.orange:C.muted,minWidth:16,textAlign:"right",flexShrink:0}}>{match.score2}</span>}
+                            </div>
+                          </div>
+                          {/* Score input button */}
                           {can("canManageTournament")&&!isTBD&&(
-                            <div style={{padding:"6px 10px",borderTop:"1px solid rgba(255,255,255,0.05)"}}>
+                            <div style={{marginTop:4}}>
                               {!editing?(
-                                <button onClick={()=>{setEditing(true);setS1(match.done?String(match.score1):"");setS2(match.done?String(match.score2):"");}} style={{width:"100%",background:"rgba(236,122,28,0.1)",border:"none",color:C.orange,borderRadius:7,padding:"5px",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:4}}>
-                                  <Icon n="edit" size={11}/>{match.done?"Sửa kết quả":"Nhập kết quả"}
+                                <button onClick={()=>{setEditing(true);setS1(isDone?String(match.score1):"");setS2(isDone?String(match.score2):"");}} style={{width:"100%",background:"rgba(236,122,28,0.08)",border:"1px solid rgba(236,122,28,0.2)",color:C.orange,borderRadius:7,padding:"4px",cursor:"pointer",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:3}}>
+                                  <Icon n="edit" size={10}/>{isDone?"Sửa":"Nhập điểm"}
                                 </button>
                               ):(
-                                <div style={{display:"flex",gap:4,alignItems:"center"}}>
-                                  <input value={s1} onChange={e=>setS1(e.target.value)} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:16,fontWeight:900,padding:"5px 2px"}} maxLength={2}/>
-                                  <span style={{color:C.dim,fontSize:12}}>–</span>
-                                  <input value={s2} onChange={e=>setS2(e.target.value)} placeholder="0" inputMode="numeric" style={{...MS,flex:1,textAlign:"center",fontSize:16,fontWeight:900,padding:"5px 2px"}} maxLength={2}/>
-                                  <button onClick={()=>{const n1=parseInt(s1),n2=parseInt(s2);if(isNaN(n1)||isNaN(n2))return;onScore(match.id,n1,n2,kb);setEditing(false);}} style={{background:"linear-gradient(135deg,#ec7a1c,#f4954a)",border:"none",color:"#fff",borderRadius:7,padding:"5px 10px",cursor:"pointer",fontWeight:700,fontSize:11}}><Icon n="check" size={11}/></button>
-                                  <button onClick={()=>setEditing(false)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:7,padding:"5px 8px",cursor:"pointer"}}><Icon n="x" size={11}/></button>
+                                <div style={{display:"flex",gap:3,alignItems:"center",background:"rgba(28,28,22,0.95)",border:"1px solid rgba(236,122,28,0.3)",borderRadius:8,padding:"4px 6px"}}>
+                                  <input value={s1} onChange={e=>setS1(e.target.value)} placeholder="0" inputMode="numeric" style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:5,color:C.text,fontSize:14,fontWeight:900,width:32,textAlign:"center",padding:"3px 0",outline:"none"}} maxLength={2}/>
+                                  <span style={{color:C.dim,fontSize:11,fontWeight:700}}>–</span>
+                                  <input value={s2} onChange={e=>setS2(e.target.value)} placeholder="0" inputMode="numeric" style={{background:"rgba(255,255,255,0.08)",border:"none",borderRadius:5,color:C.text,fontSize:14,fontWeight:900,width:32,textAlign:"center",padding:"3px 0",outline:"none"}} maxLength={2}/>
+                                  <button onClick={()=>{const n1=parseInt(s1),n2=parseInt(s2);if(isNaN(n1)||isNaN(n2))return;onScore(match.id,n1,n2,kb);setEditing(false);}} style={{background:"#ec7a1c",border:"none",color:"#fff",borderRadius:5,padding:"3px 7px",cursor:"pointer",fontSize:10,fontWeight:700}}><Icon n="check" size={10}/></button>
+                                  <button onClick={()=>setEditing(false)} style={{background:"rgba(255,255,255,0.06)",border:"none",color:C.muted,borderRadius:5,padding:"3px 5px",cursor:"pointer",fontSize:10}}><Icon n="x" size={10}/></button>
                                 </div>
                               )}
                             </div>
@@ -1692,82 +1716,141 @@ export default function App(){
                       );
                     };
 
-                    const onScore = (id,s1,s2,bracket) => handleSaveKnockoutScore(viewTour,id,s1,s2,bracket);
-                    const roundLabels = {QF:"Tứ kết",SF:"Bán kết",F:"Chung kết",["3rd"]:"Tranh hạng 3"};
+                    // ── Connector lines ──────────────────────────────────
+                    const VConn = ({height=60}) => (
+                      <div style={{width:24,display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+                        <div style={{width:1,height:height/2,background:"rgba(236,122,28,0.25)"}}/>
+                        <div style={{width:12,height:1,background:"rgba(236,122,28,0.25)",alignSelf:"flex-end"}}/>
+                        <div style={{width:1,height:height/2,background:"rgba(236,122,28,0.25)"}}/>
+                      </div>
+                    );
+                    const HConn = () => (
+                      <div style={{width:20,height:1,background:"rgba(236,122,28,0.3)",alignSelf:"center",flexShrink:0}}/>
+                    );
+
+                    // ── Round column header ──────────────────────────────
+                    const RoundHeader = ({label,color="#ec7a1c"}) => (
+                      <div style={{fontSize:9,fontWeight:800,color,letterSpacing:1,textTransform:"uppercase",fontFamily:"'Barlow Condensed',sans-serif",padding:"4px 8px",background:"rgba(236,122,28,0.08)",borderRadius:6,border:"1px solid rgba(236,122,28,0.2)",marginBottom:10,textAlign:"center",whiteSpace:"nowrap"}}>{label}</div>
+                    );
+
+                    // ── Build bracket columns ────────────────────────────
+                    const qf = kb.qf||[];
+                    const sf = kb.sf||[];
+                    const fin = (kb.final||[]).filter(m=>m.round==="F");
+                    const third = (kb.final||[]).filter(m=>m.round==="3rd");
+                    const cardW = 160;
+                    const cardH = 72; // approx card height
+                    const gap = 16;
 
                     return(
-                      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-                        {/* Regenerate button */}
-                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                          <button onClick={()=>setKnockoutBracket(generateKnockoutFromGroups(viewTour))} style={{background:"rgba(236,122,28,0.1)",border:"1px solid rgba(236,122,28,0.25)",color:C.orange,borderRadius:8,padding:"7px 14px",cursor:"pointer",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={12}/>Cập nhật bracket</button>
-                          <span style={{fontSize:10,color:C.dim}}>Dựa trên kết quả bảng đấu</span>
-                        </div>
-
-                        {/* Standings summary */}
-                        <div style={{background:"rgba(255,255,255,0.025)",borderRadius:12,border:"1px solid rgba(255,255,255,0.07)",padding:"10px 14px"}}>
-                          <div style={{fontSize:10,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase"}}>VĐV vào vòng knockout</div>
-                          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+                        {/* Refresh + advancers */}
+                        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                          <button onClick={()=>setKnockoutBracket(generateKnockoutFromGroups(viewTour))} style={{background:"rgba(236,122,28,0.1)",border:"1px solid rgba(236,122,28,0.25)",color:C.orange,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:4}}><Icon n="refresh" size={11}/>Cập nhật</button>
+                          <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                             {kb.groupStandings.flatMap(g=>g.standings.slice(0,2).map((s,si)=>(
-                              <div key={g.name+s.name} style={{display:"flex",alignItems:"center",gap:5,background:si===0?"rgba(236,122,28,0.1)":"rgba(96,165,250,0.1)",borderRadius:8,padding:"5px 10px",border:"1px solid "+(si===0?"rgba(236,122,28,0.25)":"rgba(96,165,250,0.2)")}}>
-                                <span style={{fontSize:9,fontWeight:800,color:si===0?C.orange:"#60A5FA"}}>{g.name} {si===0?"1st":"2nd"}</span>
-                                <span style={{fontSize:12,fontWeight:700,color:C.text}}>{s.name}</span>
-                                <span style={{fontSize:10,color:si===0?"#4ADE80":"#60A5FA"}}>{s.wins}T</span>
-                              </div>
+                              <span key={g.name+s.name} style={{fontSize:10,fontWeight:700,color:si===0?C.orange:"#60A5FA",background:si===0?"rgba(236,122,28,0.1)":"rgba(96,165,250,0.1)",borderRadius:6,padding:"3px 8px",border:"1px solid "+(si===0?"rgba(236,122,28,0.2)":"rgba(96,165,250,0.15)")}}>{g.name}{si===0?"①":"②"} {s.name}</span>
                             )))}
                           </div>
                         </div>
 
-                        {/* QF bracket */}
-                        {kb.qf.length>0&&(
-                          <div>
-                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="tournament" size={12} color={C.muted}/>Tứ kết</div>
-                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8}}>
-                              {kb.qf.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={"QF "+(i+1)} onScore={onScore}/>)}
-                            </div>
-                          </div>
-                        )}
+                        {/* ── BRACKET TREE (horizontal scroll) ── */}
+                        <div style={{overflowX:"auto",paddingBottom:12,WebkitOverflowScrolling:"touch"}}>
+                          <div style={{display:"inline-flex",alignItems:"stretch",gap:0,minWidth:"max-content",paddingRight:8}}>
 
-                        {/* SF bracket */}
-                        {kb.sf.length>0&&(
-                          <div>
-                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="ranking" size={12} color={C.muted}/>Bán kết</div>
-                            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:8}}>
-                              {kb.sf.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={"SF "+(i+1)} onScore={onScore}/>)}
-                            </div>
-                          </div>
-                        )}
+                            {/* ─ QF column ─ */}
+                            {qf.length>0&&(
+                              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start"}}>
+                                <RoundHeader label="Tứ kết"/>
+                                <div style={{display:"flex",flexDirection:"column",gap:gap,flex:1,justifyContent:"space-around"}}>
+                                  {qf.map((m,i)=><KOMatchCard key={m.id} match={m} onScore={onScore} kb={kb}/>)}
+                                </div>
+                              </div>
+                            )}
 
-                        {/* Final + 3rd place */}
-                        {kb.final.length>0&&(
-                          <div>
-                            <div style={{fontSize:11,fontWeight:800,color:C.muted,letterSpacing:0.8,marginBottom:8,fontFamily:"'Barlow Condensed',sans-serif",textTransform:"uppercase",display:"flex",alignItems:"center",gap:6}}><Icon n="trophy" size={12} color={"#e6a53a"}/>Chung kết</div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                              {kb.final.map((m,i)=><KOMatch key={m.id} match={m} roundLabel={i===0?"🏆 Chung kết":"Tranh hạng 3"} onScore={onScore}/>)}
-                            </div>
-                          </div>
-                        )}
+                            {/* ─ QF→SF connectors ─ */}
+                            {qf.length>0&&sf.length>0&&(
+                              <div style={{display:"flex",flexDirection:"column",justifyContent:"space-around",gap:0,alignSelf:"stretch",paddingTop:30}}>
+                                {sf.map((_,si)=>(
+                                  <div key={si} style={{display:"flex",alignItems:"center",height:(cardH+gap)*2}}>
+                                    <div style={{width:16,display:"flex",flexDirection:"column",height:"100%"}}>
+                                      <div style={{flex:1,borderRight:"1px solid rgba(236,122,28,0.3)",borderTop:"1px solid rgba(236,122,28,0.3)",borderRadius:"0 6px 0 0"}}/>
+                                      <div style={{flex:1,borderRight:"1px solid rgba(236,122,28,0.3)",borderBottom:"1px solid rgba(236,122,28,0.3)",borderRadius:"0 0 6px 0"}}/>
+                                    </div>
+                                    <div style={{width:12,height:1,background:"rgba(236,122,28,0.3)"}}/>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
 
-                        {/* Winner podium */}
-                        {kb.final[0]?.done&&(
-                          <div style={{background:"linear-gradient(135deg,rgba(236,122,28,0.15),rgba(230,165,58,0.1))",borderRadius:16,border:"1px solid rgba(236,122,28,0.3)",padding:"20px 16px",textAlign:"center"}}>
-                            <Icon n="trophy" size={32} color="#e6a53a" style={{marginBottom:8}}/>
-                            <div style={{fontSize:11,color:C.muted,marginBottom:4,letterSpacing:1,textTransform:"uppercase",fontWeight:700}}>Vô địch</div>
-                            <div style={{fontSize:22,fontWeight:900,color:C.orange,fontFamily:"'Barlow Condensed',sans-serif"}}>
-                              {kb.final[0].score1>kb.final[0].score2?kb.final[0].p1:kb.final[0].p2}
+                            {/* ─ SF column ─ */}
+                            {sf.length>0&&(
+                              <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",justifyContent:"space-around"}}>
+                                <RoundHeader label="Bán kết"/>
+                                <div style={{display:"flex",flexDirection:"column",gap:gap+(qf.length>0?(cardH+gap):0),flex:1,justifyContent:"space-around"}}>
+                                  {sf.map((m,i)=><KOMatchCard key={m.id} match={m} onScore={onScore} kb={kb}/>)}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ─ SF→Final connectors ─ */}
+                            {sf.length>0&&fin.length>0&&(
+                              <div style={{display:"flex",flexDirection:"column",justifyContent:"center",alignSelf:"stretch",paddingTop:30}}>
+                                <div style={{display:"flex",alignItems:"center",height:(cardH+gap)*sf.length+(gap*(sf.length-1))}}>
+                                  <div style={{width:16,display:"flex",flexDirection:"column",height:"100%"}}>
+                                    <div style={{flex:1,borderRight:"1px solid rgba(236,122,28,0.3)",borderTop:"1px solid rgba(236,122,28,0.3)",borderRadius:"0 6px 0 0"}}/>
+                                    <div style={{flex:1,borderRight:"1px solid rgba(236,122,28,0.3)",borderBottom:"1px solid rgba(236,122,28,0.3)",borderRadius:"0 0 6px 0"}}/>
+                                  </div>
+                                  <div style={{width:12,height:1,background:"rgba(236,122,28,0.3)"}}/>
+                                </div>
+                              </div>
+                            )}
+
+                            {/* ─ Final + 3rd column ─ */}
+                            {fin.length>0&&(
+                              <div style={{display:"flex",flexDirection:"column",justifyContent:"center",gap:16}}>
+                                <div>
+                                  <RoundHeader label="🏆 Chung kết" color="#e6a53a"/>
+                                  <div style={{display:"flex",flexDirection:"column",justifyContent:"center",flex:1,paddingTop:4}}>
+                                    {fin.map(m=><KOMatchCard key={m.id} match={m} onScore={onScore} kb={kb}/>)}
+                                  </div>
+                                </div>
+                                {third.length>0&&(
+                                  <div>
+                                    <RoundHeader label="🥉 Hạng 3" color="#a09e95"/>
+                                    {third.map(m=><KOMatchCard key={m.id} match={m} onScore={onScore} kb={kb} compact/>)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                          </div>
+                        </div>
+
+                        {/* ── WINNER PODIUM ── */}
+                        {fin[0]?.done&&(
+                          <div style={{background:"linear-gradient(135deg,rgba(236,122,28,0.15),rgba(230,165,58,0.08))",borderRadius:16,border:"1px solid rgba(236,122,28,0.35)",padding:"18px 20px",display:"flex",alignItems:"center",gap:16}}>
+                            <div style={{width:52,height:52,borderRadius:14,background:"rgba(230,165,58,0.15)",border:"1px solid rgba(230,165,58,0.3)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                              <Icon n="trophy" size={26} color="#e6a53a"/>
                             </div>
-                            <div style={{fontSize:13,color:C.muted,marginTop:4}}>{kb.final[0].score1} – {kb.final[0].score2}</div>
-                            {kb.final[1]?.done&&(
-                              <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid rgba(255,255,255,0.06)",fontSize:12,color:C.dim}}>
-                                🥉 Hạng 3: <span style={{color:C.text,fontWeight:700}}>{kb.final[1].score1>kb.final[1].score2?kb.final[1].p1:kb.final[1].p2}</span>
+                            <div style={{flex:1,minWidth:0}}>
+                              <div style={{fontSize:10,color:C.muted,letterSpacing:1,textTransform:"uppercase",fontWeight:700,marginBottom:3}}>Vô địch</div>
+                              <div style={{fontSize:20,fontWeight:900,color:C.orange,fontFamily:"'Barlow Condensed',sans-serif",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                                {fin[0].score1>fin[0].score2?fin[0].p1:fin[0].p2}
+                              </div>
+                              <div style={{fontSize:12,color:C.muted,marginTop:2}}>{fin[0].score1} – {fin[0].score2}</div>
+                            </div>
+                            {third[0]?.done&&(
+                              <div style={{textAlign:"right",flexShrink:0}}>
+                                <div style={{fontSize:9,color:C.dim,letterSpacing:0.8,textTransform:"uppercase",fontWeight:700,marginBottom:2}}>Hạng 3</div>
+                                <div style={{fontSize:14,fontWeight:800,color:"#a09e95",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:100}}>{third[0].score1>third[0].score2?third[0].p1:third[0].p2}</div>
                               </div>
                             )}
                           </div>
                         )}
                       </div>
                     );
-                  })()}
-
-                  </div>
+                  })()}                  </div>
                 </div>
               </div>
             )}
@@ -2278,6 +2361,63 @@ export default function App(){
                   <option value="1">Best of 1</option><option value="3">Best of 3</option><option value="5">Best of 5</option>
                 </select>
               </div>
+              {/* Round Robin settings */}
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px"}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={11}/>Cài đặt Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={tourForm.rrLegs} onChange={e=>setTourForm(f=>({...f,rrLegs:e.target.value}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt (simple)</option>
+                      <option value="2">2 lượt (home+away)</option>
+                      <option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={tourForm.maxPerGroup} onChange={e=>setTourForm(f=>({...f,maxPerGroup:e.target.value}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              {/* Round Robin settings */}
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px"}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={11}/>Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={tourForm.rrLegs} onChange={e=>setTourForm(f=>({...f,rrLegs:e.target.value}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt (đơn giản)</option>
+                      <option value="2">2 lượt (lượt đi + về)</option>
+                      <option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={tourForm.maxPerGroup} onChange={e=>setTourForm(f=>({...f,maxPerGroup:e.target.value}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người/cặp</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px",marginBottom:0}}>
+                <div style={{fontSize:10,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={10}/>Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={tourForm.rrLegs} onChange={e=>setTourForm(f=>({...f,rrLegs:e.target.value}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt</option><option value="2">2 lượt (đi+về)</option><option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={tourForm.maxPerGroup} onChange={e=>setTourForm(f=>({...f,maxPerGroup:e.target.value}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
               <input placeholder="Mã PIN trọng tài (tự động nếu trống)" value={tourForm.pin} onChange={e=>setTourForm(f=>({...f,pin:e.target.value}))} style={MS}/>
               <input placeholder="Ghi chú (tùy chọn)" value={tourForm.note} onChange={e=>setTourForm(f=>({...f,note:e.target.value}))} style={MS}/>
             </div>
@@ -2336,6 +2476,61 @@ export default function App(){
                 <select value={editTourModal.form.bestOf} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,bestOf:e.target.value}}))} style={{...MS,flex:1}}>
                   <option value="1">Best of 1</option><option value="3">Best of 3</option><option value="5">Best of 5</option>
                 </select>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px"}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={11}/>Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={editTourModal.form.rrLegs||editTourModal.tour.rrLegs||1} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,rrLegs:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt (simple)</option>
+                      <option value="2">2 lượt (home+away)</option>
+                      <option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={editTourModal.form.maxPerGroup||editTourModal.tour.maxPerGroup||4} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,maxPerGroup:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px"}}>
+                <div style={{fontSize:11,color:C.muted,marginBottom:8,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={11}/>Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={editTourModal.form.rrLegs||editTourModal.tour.rrLegs||1} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,rrLegs:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt (đơn giản)</option>
+                      <option value="2">2 lượt (lượt đi + về)</option>
+                      <option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={editTourModal.form.maxPerGroup||editTourModal.tour.maxPerGroup||4} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,maxPerGroup:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người/cặp</option>)}
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div style={{background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.08)",padding:"12px",marginBottom:0}}>
+                <div style={{fontSize:10,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase",display:"flex",alignItems:"center",gap:5}}><Icon n="refresh" size={10}/>Round Robin</div>
+                <div style={{display:"flex",gap:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Lượt đấu</div>
+                    <select value={editTourModal.form.rrLegs||editTourModal.tour.rrLegs||1} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,rrLegs:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      <option value="1">1 lượt</option><option value="2">2 lượt (đi+về)</option><option value="3">3 lượt</option>
+                    </select>
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:10,color:C.dim,marginBottom:4}}>Tối đa/bảng</div>
+                    <select value={editTourModal.form.maxPerGroup||editTourModal.tour.maxPerGroup||4} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,maxPerGroup:e.target.value}}))} style={{...MS,fontSize:13}}>
+                      {[3,4,5,6,8].map(n=><option key={n} value={n}>{n} người</option>)}
+                    </select>
+                  </div>
+                </div>
               </div>
               <input placeholder="Mã PIN trọng tài" value={editTourModal.form.pin} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,pin:e.target.value}}))} style={MS}/>
               <input placeholder="Ghi chú" value={editTourModal.form.note} onChange={e=>setEditTourModal(m=>({...m,form:{...m.form,note:e.target.value}}))} style={MS}/>
@@ -2406,24 +2601,17 @@ export default function App(){
             <div style={{overflowY:"auto",flex:1,padding:"16px 18px",WebkitOverflowScrolling:"touch"}}>
             {!tourRegSubmitted?(
               <div style={{display:"flex",flexDirection:"column",gap:14}}>
-                {/* Format toggle - only for mixed */}
-                {showTourRegForm.format!=="single"&&(
-                  <div>
-                    <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>Hình thức</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                      {["single","double"].map(ct=>(
-                        <button key={ct} onClick={()=>setTourRegForm(f=>({...f,content:ct,partner:ct==="single"?"":f.partner}))}
-                          style={{padding:"12px 8px",borderRadius:12,border:"2px solid "+(tourRegForm.content===ct?C.orange:"rgba(255,255,255,0.1)"),background:tourRegForm.content===ct?"rgba(236,122,28,0.12)":"rgba(255,255,255,0.03)",color:tourRegForm.content===ct?C.orange:C.muted,cursor:"pointer",fontWeight:700,fontSize:14,transition:"all 0.15s"}}>
-                          {ct==="single"?"Đánh đơn":"Đánh đôi"}
-                        </button>
-                      ))}
-                    </div>
+                {/* Format toggle - chỉ hiện khi giải hỗn hợp */}
+                {showTourRegForm.format==="mixed"&&(
+                  <div style={{background:"rgba(236,122,28,0.06)",border:"1px solid rgba(236,122,28,0.2)",borderRadius:10,padding:"10px 12px",fontSize:11,color:C.muted,display:"flex",alignItems:"center",gap:6}}>
+                    <Icon n="users" size={13} color={C.orange}/>
+                    <span><span style={{color:C.orange,fontWeight:700}}>Đôi hỗn hợp:</span> Chọn 1 VĐV Nam và 1 VĐV Nữ</span>
                   </div>
                 )}
                 {/* Player name autocomplete */}
                 <div>
                   <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>
-                    Tên VĐV <span style={{color:"#EF4444"}}>*</span>
+                    {showTourRegForm.format==="mixed"?"VĐV Nam":"Tên VĐV"} <span style={{color:"#EF4444"}}>*</span>
                   </div>
                   <div style={{position:"relative"}}>
                     <input
@@ -2443,7 +2631,7 @@ export default function App(){
                     {regPlayerFocus&&(
                       <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:999,background:"#2a2a22",border:"1px solid "+C.border,borderRadius:12,maxHeight:220,overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,0.7)"}}>
                         {(()=>{
-                          const filtered=allPlayers.filter(p=>!tourRegForm.playerName||p.name.toLowerCase().includes(tourRegForm.playerName.toLowerCase())).slice(0,15);
+                          const filtered=allPlayers.filter(p=>(!tourRegForm.playerName||p.name.toLowerCase().includes(tourRegForm.playerName.toLowerCase()))&&(showTourRegForm.format!=="mixed"||p.gender==="male")).slice(0,15);
                           if(!filtered.length) return <div style={{padding:"14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>;
                           return filtered.map(p=>(
                             <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,playerName:p.name}));setRegPlayerFocus(false);}}
@@ -2464,10 +2652,10 @@ export default function App(){
                   </div>
                 </div>
                 {/* Partner autocomplete */}
-                {tourRegForm.content==="double"&&(
+                {(tourRegForm.content==="double"||showTourRegForm.format==="mixed")&&(
                   <div>
                     <div style={{fontSize:11,color:C.muted,marginBottom:7,fontWeight:700,letterSpacing:0.5,textTransform:"uppercase"}}>
-                      Đồng đội <span style={{color:"#EF4444"}}>*</span>
+                      {showTourRegForm.format==="mixed"?"VĐV Nữ":"Đồng đội"} <span style={{color:"#EF4444"}}>*</span>
                     </div>
                     <div style={{position:"relative"}}>
                       <input
@@ -2487,7 +2675,7 @@ export default function App(){
                       {regPartnerFocus&&(
                         <div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,zIndex:999,background:"#2a2a22",border:"1px solid "+C.border,borderRadius:12,maxHeight:220,overflowY:"auto",boxShadow:"0 12px 32px rgba(0,0,0,0.7)"}}>
                           {(()=>{
-                            const filtered=allPlayers.filter(p=>p.name!==tourRegForm.playerName&&(!tourRegForm.partner||p.name.toLowerCase().includes(tourRegForm.partner.toLowerCase()))).slice(0,15);
+                            const filtered=allPlayers.filter(p=>p.name!==tourRegForm.playerName&&(!tourRegForm.partner||p.name.toLowerCase().includes(tourRegForm.partner.toLowerCase()))&&(showTourRegForm.format!=="mixed"||p.gender==="female")).slice(0,15);
                             if(!filtered.length) return <div style={{padding:"14px",fontSize:13,color:C.dim,textAlign:"center"}}>Không tìm thấy VĐV</div>;
                             return filtered.map(p=>(
                               <div key={p.id} onMouseDown={()=>{setTourRegForm(f=>({...f,partner:p.name}));setRegPartnerFocus(false);}}
@@ -2595,6 +2783,11 @@ export default function App(){
                 <select value={groupConfig.seedBy} onChange={e=>setGroupConfig(c=>({...c,seedBy:e.target.value}))} style={{...MS,flex:1}}>
                   <option value="tier">Theo Tier</option><option value="random">Ngẫu nhiên</option>
                 </select>
+              </div>
+              <div style={{background:"rgba(236,122,28,0.06)",border:"1px solid rgba(236,122,28,0.18)",borderRadius:8,padding:"8px 12px",fontSize:11,color:C.muted,display:"flex",gap:12,flexWrap:"wrap"}}>
+                <span><span style={{color:C.orange,fontWeight:700}}>Lượt đấu:</span> {groupConfig.rrLegs||1}x ({groupConfig.rrLegs>=2?"lượt đi + lượt về":"đơn giản"})</span>
+                <span><span style={{color:C.orange,fontWeight:700}}>Tối đa/bảng:</span> {groupConfig.maxPerGroup||4} người</span>
+                <span><span style={{color:C.orange,fontWeight:700}}>Trận/bảng:</span> {(()=>{const n=groupConfig.players.filter(p=>p.selected).length/Math.max(1,groupConfig.numGroups);const perG=Math.ceil(n);return Math.floor(perG*(perG-1)/2*(groupConfig.rrLegs||1));})()}</span>
               </div>
               <div style={{fontSize:11,color:C.muted}}>{groupConfig.players.filter(p=>p.selected).length} người được chọn</div>
               <div style={{maxHeight:200,overflowY:"auto",display:"flex",flexDirection:"column",gap:4}}>
