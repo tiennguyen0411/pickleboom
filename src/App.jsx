@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { Analytics } from "@vercel/analytics/react";
 
 
 // ── Hansy SVG Icons ──────────────────────────────────────────────
@@ -2895,6 +2896,7 @@ export default function App(){
 
 
     </div>
+    <Analytics />
     </>
   );
 }
